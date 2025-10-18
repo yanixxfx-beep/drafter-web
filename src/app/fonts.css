@@ -1,0 +1,53 @@
+/* TikTok Sans Font - matches original Drafter desktop app */
+
+/* Regular (400) - Primary font for captions */
+@font-face {
+  font-family: 'TikTok Sans';
+  src: url('/assets/fonts/TikTok_font/TikTokSans_18pt_Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Medium (500) */
+@font-face {
+  font-family: 'TikTok Sans';
+  src: url('/assets/fonts/TikTok_font/TikTokSans_18pt_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* SemiBold (600) */
+@font-face {
+  font-family: 'TikTok Sans';
+  src: url('/assets/fonts/TikTok_font/TikTokSans_18pt_SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Caption styles - TikTok Sans for captions only */
+.caption {
+  font-family: "TikTok Sans", "TikTokSans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  font-weight: 400;
+}
+
+/* Fallback fonts that closely match TikTok Sans */
+@font-face {
+  font-family: 'TikTok Sans Fallback';
+  src: local('Segoe UI'), local('Arial'), local('sans-serif');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'TikTok Sans Fallback';
+  src: local('Segoe UI Semibold'), local('Arial Bold'), local('sans-serif');
+  font-weight: 600;
+  font-style: normal;
+}
+
+

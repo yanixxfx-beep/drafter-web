@@ -1,0 +1,44 @@
+{
+  "name": "drafter-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:strict": "node scripts/preflight/lock-port-3000.mjs && set PORT=3000&& next dev -p 3000 -H localhost",
+    "dev:try": "npx kill-port 3000 && timeout /t 2 >nul && set PORT=3000&& next dev -p 3000 -H localhost",
+    "dev:clean": "node scripts/clean-start.mjs && set PORT=3000&& next dev -p 3000 -H localhost",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup-git": "git init && git add . && git commit -m \"Initial commit - Drafter app\""
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.17.1",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.0",
+    "googleapis": "^128.0.0",
+    "heic2any": "^0.0.4",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.294.0",
+    "motion": "^12.23.22",
+    "multer": "^2.0.2",
+    "next": "14.0.4",
+    "next-auth": "^4.24.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "14.0.4",
+    "kill-port": "^2.0.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.0"
+  }
+}
