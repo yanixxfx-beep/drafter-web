@@ -133,3 +133,4 @@ const s = Math.min(W/iw, H/ih);  // Scale to fit entirely within canvas
 **Both issues should now be resolved!** Images will show more content and text will be properly positioned. 🎉
 
 
+

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useTheme } from '@/context/ThemeContext'
 import { Palette, Volume2, Download, Folder, Database } from 'lucide-react'
+import CloudUploadExample from '@/components/CloudUploadExample'
+import UsageMeter from '@/components/UsageMeter'
 
 export function SettingsPage() {
   const { theme, setTheme, colors } = useTheme()
@@ -367,67 +369,113 @@ function MemoryTab() {
   const { colors } = useTheme()
 
   return (
-    <div 
-      className="p-6 rounded-2xl border"
-      style={{ 
-        backgroundColor: colors.surface,
-        borderColor: colors.border 
-      }}
-    >
-      <h2 
-        className="text-xl font-bold mb-6"
-        style={{ color: colors.textPrimary }}
+    <div className="space-y-6">
+      {/* Cloud Storage Usage */}
+      <div 
+        className="p-6 rounded-2xl border"
+        style={{ 
+          backgroundColor: colors.surface,
+          borderColor: colors.border 
+        }}
       >
-        Memory & Storage
-      </h2>
-      
-      <div className="space-y-6">
-        <div>
-          <div className="flex justify-between mb-2">
-            <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
-              Memory Usage
-            </span>
-            <span className="text-sm" style={{ color: colors.textSecondary }}>
-              45%
-            </span>
-          </div>
-          <div 
-            className="w-full h-2 rounded-full"
-            style={{ backgroundColor: colors.surfaceSecondary }}
-          >
-            <div 
-              className="h-2 rounded-full"
-              style={{ 
-                backgroundColor: colors.accent,
-                width: '45%'
-              }}
-            />
+        <h2 
+          className="text-xl font-bold mb-6"
+          style={{ color: colors.textPrimary }}
+        >
+          Cloud Storage
+        </h2>
+        
+        <div className="space-y-4">
+          <UsageMeter />
+          
+          <div className="text-sm space-y-1" style={{ color: colors.textSecondary }}>
+            <div>Files are stored securely in the cloud</div>
+            <div>Access from any device with your account</div>
           </div>
         </div>
+      </div>
 
-        <button
-          className="w-full p-4 rounded-xl border transition-all duration-200 hover:bg-opacity-10"
-          style={{ 
-            backgroundColor: colors.buttonBg,
-            borderColor: colors.border,
-            color: colors.textPrimary
-          }}
+      {/* Cloud Upload Test */}
+      <div 
+        className="p-6 rounded-2xl border"
+        style={{ 
+          backgroundColor: colors.surface,
+          borderColor: colors.border 
+        }}
+      >
+        <h2 
+          className="text-xl font-bold mb-6"
+          style={{ color: colors.textPrimary }}
         >
-          <div className="flex items-center space-x-3">
-            <Database size={20} />
-            <div className="text-left">
-              <div className="font-semibold">Clear Cache</div>
-              <div className="text-sm" style={{ color: colors.textSecondary }}>
-                Free up storage space
-              </div>
+          Test Cloud Upload
+        </h2>
+        
+        <CloudUploadExample />
+      </div>
+
+      {/* Local Memory */}
+      <div 
+        className="p-6 rounded-2xl border"
+        style={{ 
+          backgroundColor: colors.surface,
+          borderColor: colors.border 
+        }}
+      >
+        <h2 
+          className="text-xl font-bold mb-6"
+          style={{ color: colors.textPrimary }}
+        >
+          Local Memory
+        </h2>
+        
+        <div className="space-y-6">
+          <div>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
+                Memory Usage
+              </span>
+              <span className="text-sm" style={{ color: colors.textSecondary }}>
+                45%
+              </span>
+            </div>
+            <div 
+              className="w-full h-2 rounded-full"
+              style={{ backgroundColor: colors.surfaceSecondary }}
+            >
+              <div 
+                className="h-2 rounded-full"
+                style={{ 
+                  backgroundColor: colors.accent,
+                  width: '45%'
+                }}
+              />
             </div>
           </div>
-        </button>
 
-        <div className="text-sm space-y-1" style={{ color: colors.textSecondary }}>
-          <div>Available: 2.5 GB</div>
-          <div>Used: 1.2 GB</div>
-          <div>Total: 3.7 GB</div>
+          <button
+            className="w-full p-4 rounded-xl border transition-all duration-200 hover:bg-opacity-10"
+            style={{ 
+              backgroundColor: colors.buttonBg,
+              borderColor: colors.border,
+              color: colors.textPrimary
+            }}
+          >
+            <div className="flex items-center space-x-3">
+              <Database size={20} />
+              <div className="text-left">
+                <div className="font-semibold">Clear Cache</div>
+                <div className="text-sm" style={{ color: colors.textSecondary }}>
+                  Free up storage space
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <div className="text-sm space-y-1" style={{ color: colors.textSecondary }}>
+            <div>Available: 2.5 GB</div>
+            <div>Used: 1.2 GB</div>
+            <div>Total: 3.7 GB</div>
+          </div>
         </div>
       </div>
     </div>

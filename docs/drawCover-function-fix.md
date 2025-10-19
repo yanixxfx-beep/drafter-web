@@ -135,3 +135,4 @@ drawCover(ctx, img, canvas.width, canvas.height)
 **This was the missing piece!** The canvas architecture fix was correct, but the `drawCover` function calls were broken, causing all images to render as black backgrounds. 🎉
 
 
+

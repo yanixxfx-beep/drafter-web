@@ -19,3 +19,4 @@ export async function decodeBitmapAtSizeFromFile(
   return await createImageBitmap(img as any); // not ideal, but rarely hit
 }
 
+
