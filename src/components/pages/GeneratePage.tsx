@@ -2933,6 +2933,7 @@ export function GeneratePage() {
       </div>
     </div>
   )
+  }
 
   const renderStep2 = () => (
     <div className="space-y-4">
