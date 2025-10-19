@@ -234,6 +234,7 @@ export function GeneratePage() {
   const [generatedIdeas, setGeneratedIdeas] = useState<Array<{
     ideaId: number
     ideaText: string
+    sourceSheet: string  // Track which sheet this idea came from
     slides: Array<{
       id: string
       caption: string
@@ -870,6 +871,63 @@ export function GeneratePage() {
       console.error('Failed to load selected sheets data:', error)
     } finally {
       setIsLoadingSheets(false)
+    }
+  }
+
+  // Group ideas by source sheet
+  const getIdeasBySheet = () => {
+    const grouped = generatedIdeas.reduce((acc, idea) => {
+      const sheetName = idea.sourceSheet
+      if (!acc[sheetName]) {
+        acc[sheetName] = []
+      }
+      acc[sheetName].push(idea)
+      return acc
+    }, {} as Record<string, typeof generatedIdeas>)
+    
+    return grouped
+  }
+
+  // Export all drafts for a specific sheet
+  const exportSheetDraftsAsZIP = async (sheetName: string) => {
+    const ideasBySheet = getIdeasBySheet()
+    const sheetIdeas = ideasBySheet[sheetName] || []
+    
+    if (sheetIdeas.length === 0) {
+      alert(`No drafts found for sheet: ${sheetName}`)
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      
+      let slideCount = 0
+      for (const idea of sheetIdeas) {
+        for (const slide of idea.slides) {
+          if (slide.thumbnail) {
+            // Convert dataURL to blob
+            const response = await fetch(slide.thumbnail)
+            const blob = await response.blob()
+            zip.file(`${idea.ideaId}-${slide.slideNumber}-${slide.id}.png`, blob)
+            slideCount++
+          }
+        }
+      }
+      
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${step1Data?.spreadsheetName || 'spreadsheet'}_${sheetName.toLowerCase()}.zip`
+      link.click()
+      
+      console.log(`✅ Exported ${slideCount} slides for sheet: ${sheetName}`)
+    } catch (error) {
+      console.error('Failed to export sheet drafts:', error)
+      alert('Failed to export drafts. Please try again.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -1681,6 +1739,7 @@ export function GeneratePage() {
     const newIdeas: Array<{
       ideaId: number
       ideaText: string
+      sourceSheet: string
       slides: Array<{
         id: string
         caption: string
@@ -1852,6 +1911,7 @@ export function GeneratePage() {
           newIdeas.push({
             ideaId: ideaIndex + 1,
             ideaText: mainIdeaText,
+            sourceSheet: idea.sourceSheet || 'Unknown', // Include source sheet
             slides: ideaSlides,
             isExpanded: false // Start collapsed
           })
