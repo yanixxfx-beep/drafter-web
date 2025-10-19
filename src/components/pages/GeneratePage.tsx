@@ -123,6 +123,8 @@ interface Step1Data {
   summary: {
     ideasCount: number
     slideCols: string[]
+    totalSlides?: number
+    selectedSheets?: string[]
   }
 }
 
@@ -595,6 +597,13 @@ export function GeneratePage() {
     }
   }, [session])
 
+  // Load data when sheets are selected
+  useEffect(() => {
+    if (selectedSheets.length > 0 && step1Data?.spreadsheetId) {
+      loadSelectedSheetsData()
+    }
+  }, [selectedSheets, step1Data?.spreadsheetId])
+
   const loadSavedData = async () => {
     try {
       setStep2Data({
@@ -788,6 +797,80 @@ export function GeneratePage() {
         return [...prev, sheetName]
       }
     })
+  }
+
+  // Load data from all selected sheets and combine them
+  const loadSelectedSheetsData = async () => {
+    if (!step1Data || selectedSheets.length === 0) return
+    
+    try {
+      setIsLoadingSheets(true)
+      
+      // Load data from each selected sheet
+      const sheetDataPromises = selectedSheets.map(async (sheetName) => {
+        const response = await fetch('/api/sheets/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            spreadsheetId: step1Data.spreadsheetId,
+            sheetName,
+          }),
+          credentials: 'include'
+        })
+        
+        const data = await response.json()
+        return {
+          sheetName,
+          ideas: data.ideas || [],
+          slideColumns: data.slideColumns || [],
+          totalIdeas: data.totalIdeas || 0,
+          totalSlides: data.totalSlides || 0
+        }
+      })
+      
+      const allSheetData = await Promise.all(sheetDataPromises)
+      
+      // Combine all data
+      const combinedIdeas = allSheetData.flatMap(sheet => 
+        sheet.ideas.map(idea => ({
+          ...idea,
+          sourceSheet: sheet.sheetName // Track which sheet this idea came from
+        }))
+      )
+      
+      const combinedSlideColumns = Array.from(new Set(
+        allSheetData.flatMap(sheet => sheet.slideColumns)
+      ))
+      
+      const totalIdeas = allSheetData.reduce((sum, sheet) => sum + sheet.totalIdeas, 0)
+      const totalSlides = allSheetData.reduce((sum, sheet) => sum + sheet.totalSlides, 0)
+      
+      // Update step1Data with combined data
+      setStep1Data({
+        ...step1Data,
+        sheetName: selectedSheets.join(', '), // Show all selected sheets
+        ideas: combinedIdeas,
+        slideColumns: combinedSlideColumns,
+        summary: {
+          ideasCount: totalIdeas,
+          slideCols: combinedSlideColumns,
+          totalSlides: totalSlides,
+          selectedSheets: selectedSheets
+        }
+      })
+      
+      console.log('Combined data loaded:', {
+        totalIdeas,
+        totalSlides,
+        selectedSheets,
+        combinedIdeas: combinedIdeas.length
+      })
+      
+    } catch (error) {
+      console.error('Failed to load selected sheets data:', error)
+    } finally {
+      setIsLoadingSheets(false)
+    }
   }
 
   const canProceedToStep = (step: number) => {
@@ -2711,28 +2794,73 @@ export function GeneratePage() {
                 <h3 className="text-lg font-semibold mb-4" style={{ color: colors.text }}>
                   Ready to Generate
                 </h3>
+                
+                {/* Selected Sheets Info */}
+                <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
+                  <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
+                    Selected Sheets ({selectedSheets.length}):
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSheets.map((sheet) => (
+                      <span 
+                        key={sheet}
+                        className="px-2 py-1 rounded text-xs font-medium"
+                        style={{ 
+                          backgroundColor: colors.accent + '20',
+                          color: colors.accent 
+                        }}
+                      >
+                        {sheet}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: colors.accent }}>
-                      {step1Data.summary.ideasCount}
+                      {step1Data.summary.ideasCount || 0}
                     </div>
                     <div className="text-sm" style={{ color: colors.textMuted }}>
-                      Ideas Available
+                      Total Ideas
                     </div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: colors.accent }}>
-                      {step1Data.summary.slideCols.length}
+                      {step1Data.summary.totalSlides || step1Data.summary.slideCols.length}
                     </div>
                     <div className="text-sm" style={{ color: colors.textMuted }}>
-                      Slide Columns
+                      Total Slides (Captions)
                     </div>
                   </div>
                 </div>
+                
+                {step1Data.summary.slideCols.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
+                      Available Slide Columns:
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {step1Data.summary.slideCols.map((col) => (
+                        <span 
+                          key={col}
+                          className="px-2 py-1 rounded text-xs"
+                          style={{ 
+                            backgroundColor: colors.surface2,
+                            color: colors.textMuted 
+                          }}
+                        >
+                          {col}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
                   <p className="text-sm" style={{ color: colors.textMuted }}>
                     <strong>Spreadsheet:</strong> {step1Data.spreadsheetName}<br />
-                    <strong>Sheet:</strong> {step1Data.sheetName}<br />
+                    <strong>Sheets:</strong> {selectedSheets.join(', ')}<br />
                     <strong>Note:</strong> Content images will be pulled from your Content page.
                   </p>
                 </div>
