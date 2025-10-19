@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/Icon'
 import { CloseProjectModal } from '@/components/ui/CloseProjectModal'
 import { SlideEditor } from '@/components/pages/SlideEditor'
+import MultiSheetFlow from '@/components/generate/multi/MultiSheetFlow'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -122,6 +123,8 @@ interface Step1Data {
   summary: {
     ideasCount: number
     slideCols: string[]
+    totalSlides?: number
+    selectedSheets?: string[]
   }
 }
 
@@ -191,6 +194,9 @@ export function GeneratePage() {
   const [step2Data, setStep2Data] = useState<Step2Data | null>(null)
   const [step3Data, setStep3Data] = useState<Step3Data | null>(null)
   
+  // Multi-sheet mode toggle
+  const [isMultiSheetMode, setIsMultiSheetMode] = useState(false)
+  
   // Generation Preferences (Step 2.5)
   interface GenerationPreferences {
     format: '9:16' | '3:4' | 'combined'
@@ -215,6 +221,7 @@ export function GeneratePage() {
   const [availableSheets, setAvailableSheets] = useState<string[]>([])
   const [isLoadingSheets, setIsLoadingSheets] = useState(false)
   const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<string>('')
+  const [selectedSheets, setSelectedSheets] = useState<string[]>([]) // For multiple sheet selection
   
   // Step 2 Preview states
   const [currentCaption, setCurrentCaption] = useState<string>('')
@@ -227,6 +234,7 @@ export function GeneratePage() {
   const [generatedIdeas, setGeneratedIdeas] = useState<Array<{
     ideaId: number
     ideaText: string
+    sourceSheet: string  // Track which sheet this idea came from
     slides: Array<{
       id: string
       caption: string
@@ -245,6 +253,8 @@ export function GeneratePage() {
   }>>([])
   const [selectedDraft, setSelectedDraft] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isGroupedBySheet, setIsGroupedBySheet] = useState(false)
+  const [expandedSheets, setExpandedSheets] = useState<Record<string, boolean>>({})
   
   // Image randomization tracking
   const [usedImages, setUsedImages] = useState<Set<string>>(new Set())
@@ -590,6 +600,13 @@ export function GeneratePage() {
     }
   }, [session])
 
+  // Load data when sheets are selected
+  useEffect(() => {
+    if (selectedSheets.length > 0 && step1Data?.spreadsheetId) {
+      loadSelectedSheetsData()
+    }
+  }, [selectedSheets, step1Data?.spreadsheetId])
+
   const loadSavedData = async () => {
     try {
       setStep2Data({
@@ -772,14 +789,158 @@ export function GeneratePage() {
     }
   }
 
+  // Handle sheet toggle selection for multiple sheets
+  const handleSheetToggle = (sheetName: string) => {
+    setSelectedSheets(prev => {
+      if (prev.includes(sheetName)) {
+        // Remove sheet if already selected
+        return prev.filter(sheet => sheet !== sheetName)
+      } else {
+        // Add sheet if not selected
+        return [...prev, sheetName]
+      }
+    })
+  }
+
+  // Load data from all selected sheets and combine them
+  const loadSelectedSheetsData = async () => {
+    if (!step1Data || selectedSheets.length === 0) return
+    
+    try {
+      setIsLoadingSheets(true)
+      
+      // Load data from each selected sheet
+      const sheetDataPromises = selectedSheets.map(async (sheetName) => {
+        const response = await fetch('/api/sheets/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            spreadsheetId: step1Data.spreadsheetId,
+            sheetName,
+          }),
+          credentials: 'include'
+        })
+        
+        const data = await response.json()
+        return {
+          sheetName,
+          ideas: data.ideas || [],
+          slideColumns: data.slideColumns || [],
+          totalIdeas: data.totalIdeas || 0,
+          totalSlides: data.totalSlides || 0
+        }
+      })
+      
+      const allSheetData = await Promise.all(sheetDataPromises)
+      
+      // Combine all data
+      const combinedIdeas = allSheetData.flatMap(sheet => 
+        sheet.ideas.map(idea => ({
+          ...idea,
+          sourceSheet: sheet.sheetName // Track which sheet this idea came from
+        }))
+      )
+      
+      const combinedSlideColumns = Array.from(new Set(
+        allSheetData.flatMap(sheet => sheet.slideColumns)
+      ))
+      
+      const totalIdeas = allSheetData.reduce((sum, sheet) => sum + sheet.totalIdeas, 0)
+      const totalSlides = allSheetData.reduce((sum, sheet) => sum + sheet.totalSlides, 0)
+      
+      // Update step1Data with combined data
+      setStep1Data({
+        ...step1Data,
+        sheetName: selectedSheets.join(', '), // Show all selected sheets
+        ideas: combinedIdeas,
+        slideColumns: combinedSlideColumns,
+        summary: {
+          ideasCount: totalIdeas,
+          slideCols: combinedSlideColumns,
+          totalSlides: totalSlides,
+          selectedSheets: selectedSheets
+        }
+      })
+      
+      console.log('Combined data loaded:', {
+        totalIdeas,
+        totalSlides,
+        selectedSheets,
+        combinedIdeas: combinedIdeas.length
+      })
+      
+    } catch (error) {
+      console.error('Failed to load selected sheets data:', error)
+    } finally {
+      setIsLoadingSheets(false)
+    }
+  }
+
+  // Group ideas by source sheet
+  const getIdeasBySheet = () => {
+    const grouped = generatedIdeas.reduce((acc, idea) => {
+      const sheetName = idea.sourceSheet
+      if (!acc[sheetName]) {
+        acc[sheetName] = []
+      }
+      acc[sheetName].push(idea)
+      return acc
+    }, {} as Record<string, typeof generatedIdeas>)
+    
+    return grouped
+  }
+
+  // Export all drafts for a specific sheet
+  const exportSheetDraftsAsZIP = async (sheetName: string) => {
+    const ideasBySheet = getIdeasBySheet()
+    const sheetIdeas = ideasBySheet[sheetName] || []
+    
+    if (sheetIdeas.length === 0) {
+      alert(`No drafts found for sheet: ${sheetName}`)
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      
+      let slideCount = 0
+      for (const idea of sheetIdeas) {
+        for (const slide of idea.slides) {
+          if (slide.thumbnail) {
+            // Convert dataURL to blob
+            const response = await fetch(slide.thumbnail)
+            const blob = await response.blob()
+            zip.file(`${idea.ideaId}-${slide.slideNumber}-${slide.id}.png`, blob)
+            slideCount++
+          }
+        }
+      }
+      
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${step1Data?.spreadsheetName || 'spreadsheet'}_${sheetName.toLowerCase()}.zip`
+      link.click()
+      
+      console.log(`✅ Exported ${slideCount} slides for sheet: ${sheetName}`)
+    } catch (error) {
+      console.error('Failed to export sheet drafts:', error)
+      alert('Failed to export drafts. Please try again.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const canProceedToStep = (step: number) => {
     switch (step) {
       case 2:
-        return step1Data !== null && step1Data.sheetName !== ''
+        return step1Data !== null && selectedSheets.length > 0
       case 3: // Step 2.5 - Generation
-        return step1Data !== null && step1Data.sheetName !== '' && step2Data !== null
+        return step1Data !== null && selectedSheets.length > 0 && step2Data !== null
       case 4: // Step 3 - Drafts (after generation)
-        return step1Data !== null && step1Data.sheetName !== '' && step2Data !== null && generationPreferences !== null
+        return step1Data !== null && selectedSheets.length > 0 && step2Data !== null && generationPreferences !== null
       default:
         return true
     }
@@ -1580,6 +1741,7 @@ export function GeneratePage() {
     const newIdeas: Array<{
       ideaId: number
       ideaText: string
+      sourceSheet: string
       slides: Array<{
         id: string
         caption: string
@@ -1751,6 +1913,7 @@ export function GeneratePage() {
           newIdeas.push({
             ideaId: ideaIndex + 1,
             ideaText: mainIdeaText,
+            sourceSheet: idea.sourceSheet || 'Unknown', // Include source sheet
             slides: ideaSlides,
             isExpanded: false // Start collapsed
           })
@@ -2106,33 +2269,25 @@ export function GeneratePage() {
 
   // Randomize a single slide's image
   const randomizeSingleSlideImage = async (ideaIndex: number, slideIndex: number) => {
-    console.log('🔄 Starting randomizeSingleSlideImage...', { ideaIndex, slideIndex })
-    console.log('Available images:', availableImages.length)
-    
     if (availableImages.length === 0) {
-      console.error('❌ No images available to randomize')
       alert('No images available to randomize.')
       return
     }
 
     try {
-      console.log('📊 Getting idea and slide data...')
       const idea = generatedIdeas[ideaIndex]
       if (!idea) {
-        console.error('❌ Idea not found at index:', ideaIndex)
+        console.error('Idea not found at index:', ideaIndex)
         return
       }
       const slide = idea.slides[slideIndex]
       if (!slide) {
-        console.error('❌ Slide not found at index:', slideIndex)
+        console.error('Slide not found at index:', slideIndex)
         return
       }
-      console.log('✅ Found slide:', slide.id, 'Current image:', slide.image?.substring(0, 50))
 
       // Filter images by the slide's imageSource
-      console.log('🔍 Filtering images by source type...')
       const slideImageSource = slide.imageSource || 'affiliate'
-      console.log('Slide image source:', slideImageSource)
       
       let availableForSelection = availableImages.filter(img => {
         const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
@@ -2145,15 +2300,11 @@ export function GeneratePage() {
         }
       })
       
-      console.log(`Available ${slideImageSource} images:`, availableForSelection.length)
-      
       // Exclude already used images
       availableForSelection = availableForSelection.filter(img => !usedImages.has(img.id))
-      console.log('Available for selection (unused):', availableForSelection.length)
       
       // If all images of this type are used, reset the pool for this type
       if (availableForSelection.length === 0) {
-        console.log(`⚠️ All ${slideImageSource} images used, resetting pool...`)
         setUsedImages(new Set())
         availableForSelection = availableImages.filter(img => {
           const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
@@ -2169,10 +2320,8 @@ export function GeneratePage() {
 
       // Exclude the current image
       availableForSelection = availableForSelection.filter(img => img.url !== slide.image)
-      console.log('Available after excluding current:', availableForSelection.length)
       
       if (availableForSelection.length === 0) {
-        console.error('❌ No other images available')
         alert('No other images available.')
         return
       }
@@ -2180,13 +2329,10 @@ export function GeneratePage() {
       // Pick a random image
       const randomIndex = Math.floor(Math.random() * availableForSelection.length)
       const newImage = availableForSelection[randomIndex]
-      console.log('🎲 Selected new image:', newImage.name, 'ID:', newImage.id.substring(0, 20))
 
       // Regenerate the slide with the new image
-      console.log('🎨 Creating canvas...')
       const canvas = document.createElement('canvas')
       const format = slide.format || step2Data?.safeZoneFormat || '9:16'
-      console.log('📐 Format:', format)
       
       if (format === '3:4') {
         canvas.width = 1080
@@ -2195,83 +2341,56 @@ export function GeneratePage() {
         canvas.width = 1080
         canvas.height = 1920
       }
-
-      console.log('✅ Canvas created:', canvas.width, 'x', canvas.height)
       
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        console.error('❌ Failed to get canvas context')
+        console.error('Failed to get canvas context')
         return
       }
-      console.log('✅ Got canvas context')
 
       // Load and draw the new image
-      console.log('🖼️ Loading new image...')
       const img = new Image()
       
       // Create a fresh blob URL to avoid revoked URLs
       let imageUrl = newImage.url
-      console.log('📍 Original URL:', imageUrl.substring(0, 60))
       
       if (imageUrl.startsWith('blob:')) {
-        console.log('🔄 Blob URL detected, attempting to create fresh URL...')
         try {
           // Try to get the file from OPFS and create a fresh blob URL
           if (newImage.fileHandle) {
-            console.log('📁 File handle available, getting file...')
             const file = await newImage.fileHandle.getFile()
             imageUrl = URL.createObjectURL(file)
-            console.log('✅ Fresh blob URL created:', imageUrl.substring(0, 60))
-          } else {
-            console.warn('⚠️ No file handle available, using original URL')
           }
         } catch (error) {
-          console.warn('❌ Failed to create fresh blob URL, using original:', error)
+          console.warn('Failed to create fresh blob URL, using original:', error)
         }
-      } else {
-        console.log('ℹ️ Not a blob URL, using as-is')
       }
       
-      console.log('🎯 Setting img.src...')
       img.src = imageUrl
       
-      console.log('⏳ Waiting for image to load...')
       await new Promise((resolve) => {
-        img.onload = () => {
-          console.log('✅ Image loaded successfully:', img.width, 'x', img.height)
-          resolve(true)
-        }
+        img.onload = () => resolve(true)
         img.onerror = (e) => {
-          console.error('❌ Failed to load image:', imageUrl, 'Error:', e)
+          console.error('Failed to load image:', imageUrl, 'Error:', e)
           resolve(false) // Continue even if image fails to load
         }
       })
 
       // Paint solid background first (prevents transparency)
-      console.log('🎨 Painting background...')
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
-      console.log('✅ Background painted')
       
       // Draw image if loaded successfully
       if (img.complete && img.naturalWidth > 0) {
-        console.log('🎨 Drawing image with drawCover...')
         ctx.save()
         drawContain(ctx, img, canvas.width, canvas.height)
         ctx.restore()
-        console.log('✅ Image drawn successfully')
-      } else {
-        console.warn('⚠️ Image failed to load, background remains black')
       }
 
       // Apply text with existing settings
-      console.log('📝 Applying text overlay...')
       if (step2Data) {
-        console.log('✅ Step2 data available')
         const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
-        console.log('🔤 Font weight:', fontWeight, 'Font size:', step2Data.fontSize)
         
-        console.log('📐 Calculating text layout...')
         const layout = layoutDesktop(ctx, {
           text: slide.caption,
           fontFamily: 'TikTok Sans',
@@ -2289,9 +2408,7 @@ export function GeneratePage() {
           deskH: canvas.height,
           useSafeZone: false
         })
-        console.log('✅ Layout calculated:', layout.lines.length, 'lines')
 
-        console.log('✍️ Drawing text...')
         ctx.save()
         ctx.translate(layout.centerX, 0)
         ctx.rotate((step2Data.textRotation * Math.PI) / 180)
@@ -2299,7 +2416,6 @@ export function GeneratePage() {
         layout.lines.forEach((line, i) => {
           const x = 0
           const y = layout.baselines[i]
-          console.log(`  Line ${i}: "${line}" at (${x}, ${y})`)
 
           if (step2Data.outlinePx > 0) {
             ctx.strokeStyle = '#000000'
@@ -2314,18 +2430,12 @@ export function GeneratePage() {
         })
 
         ctx.restore()
-        console.log('✅ Text drawn successfully')
-      } else {
-        console.warn('⚠️ No step2Data available, skipping text')
       }
 
       // Generate thumbnail from canvas
-      console.log('📸 Generating thumbnail dataURL...')
       const thumbnailDataURL = canvas.toDataURL('image/png')
-      console.log('✅ Thumbnail generated:', thumbnailDataURL.substring(0, 50) + '...')
 
       // Update the slide IMMUTABLY
-      console.log('💾 Updating slide state immutably...')
       setGeneratedIdeas(prev =>
         prev.map((idea, iIdx) =>
           iIdx !== ideaIndex ? idea : {
@@ -2342,15 +2452,10 @@ export function GeneratePage() {
           }
         )
       )
-      console.log('✅ State update triggered (immutable)')
       
-      console.log('🏷️ Marking image as used...')
       setUsedImages(prev => new Set([...prev, newImage.id]))
-      
-      console.log('🎉 ✅ Successfully randomized image for slide!')
     } catch (error) {
-      console.error('❌ Failed to randomize slide image:', error)
-      console.error('Error details:', error)
+      console.error('Failed to randomize slide image:', error)
       alert('Failed to randomize image. Please try again.')
     }
   }
@@ -2690,29 +2795,52 @@ export function GeneratePage() {
                   borderColor: colors.border 
                 }}
               >
-                  <label htmlFor="sheet-select" className="block text-lg font-semibold mb-4" style={{ color: colors.text }}>
-                  Select Day Sheet
-                  </label>
+                <label className="block text-lg font-semibold mb-4" style={{ color: colors.text }}>
+                  Select Day Sheets
+                </label>
                 
-                <select
-                    id="sheet-select"
-                    name="sheetName"
-                  value={step1Data?.sheetName || ''}
-                  onChange={(e) => handleSheetSelect(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
-                >
-                  <option value="">Select a sheet...</option>
+                <div className="space-y-3">
                   {availableSheets.map((sheet) => (
-                    <option key={sheet} value={sheet}>
-                      {sheet}
-                    </option>
+                    <div 
+                      key={sheet}
+                      className="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all hover:bg-opacity-50"
+                      style={{ 
+                        backgroundColor: colors.surface2, 
+                        borderColor: selectedSheets.includes(sheet) ? colors.accent : colors.border,
+                        borderWidth: selectedSheets.includes(sheet) ? '2px' : '1px'
+                      }}
+                      onClick={() => handleSheetToggle(sheet)}
+                    >
+                      <span className="font-medium" style={{ color: colors.text }}>
+                        {sheet}
+                      </span>
+                      
+                      {/* Toggle Circle */}
+                      <div 
+                        className="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                        style={{ 
+                          borderColor: selectedSheets.includes(sheet) ? colors.accent : colors.border,
+                          backgroundColor: selectedSheets.includes(sheet) ? colors.accent : 'transparent'
+                        }}
+                      >
+                        {selectedSheets.includes(sheet) && (
+                          <div 
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: 'white' }}
+                          />
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </select>
+                </div>
+                
+                {selectedSheets.length > 0 && (
+                  <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: colors.accent + '20' }}>
+                    <p className="text-sm font-medium" style={{ color: colors.accent }}>
+                      {selectedSheets.length} sheet{selectedSheets.length !== 1 ? 's' : ''} selected: {selectedSheets.join(', ')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2728,28 +2856,73 @@ export function GeneratePage() {
                 <h3 className="text-lg font-semibold mb-4" style={{ color: colors.text }}>
                   Ready to Generate
                 </h3>
+                
+                {/* Selected Sheets Info */}
+                <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
+                  <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
+                    Selected Sheets ({selectedSheets.length}):
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSheets.map((sheet) => (
+                      <span 
+                        key={sheet}
+                        className="px-2 py-1 rounded text-xs font-medium"
+                        style={{ 
+                          backgroundColor: colors.accent + '20',
+                          color: colors.accent 
+                        }}
+                      >
+                        {sheet}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: colors.accent }}>
-                      {step1Data.summary.ideasCount}
+                      {step1Data.summary.ideasCount || 0}
                     </div>
                     <div className="text-sm" style={{ color: colors.textMuted }}>
-                      Ideas Available
+                      Total Ideas
                     </div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: colors.accent }}>
-                      {step1Data.summary.slideCols.length}
+                      {step1Data.summary.totalSlides || step1Data.summary.slideCols.length}
                     </div>
                     <div className="text-sm" style={{ color: colors.textMuted }}>
-                      Slide Columns
+                      Total Slides (Captions)
                     </div>
                   </div>
                 </div>
+                
+                {step1Data.summary.slideCols.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-sm font-medium mb-2" style={{ color: colors.text }}>
+                      Available Slide Columns:
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {step1Data.summary.slideCols.map((col) => (
+                        <span 
+                          key={col}
+                          className="px-2 py-1 rounded text-xs"
+                          style={{ 
+                            backgroundColor: colors.surface2,
+                            color: colors.textMuted 
+                          }}
+                        >
+                          {col}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
                   <p className="text-sm" style={{ color: colors.textMuted }}>
                     <strong>Spreadsheet:</strong> {step1Data.spreadsheetName}<br />
-                    <strong>Sheet:</strong> {step1Data.sheetName}<br />
+                    <strong>Sheets:</strong> {selectedSheets.join(', ')}<br />
                     <strong>Note:</strong> Content images will be pulled from your Content page.
                   </p>
                 </div>
@@ -3367,6 +3540,35 @@ export function GeneratePage() {
     return 'Unknown'
   }
 
+  // Group ideas by source sheet
+  const getIdeasBySheet = () => {
+    const grouped = generatedIdeas.reduce((acc, idea) => {
+      const sheetName = idea.sourceSheet
+      if (!acc[sheetName]) {
+        acc[sheetName] = []
+      }
+      acc[sheetName].push(idea)
+      return acc
+    }, {} as Record<string, typeof generatedIdeas>)
+    
+    return grouped
+  }
+
+  // Toggle sheet expansion
+  const toggleSheetExpansion = (sheetName: string) => {
+    setExpandedSheets(prev => ({
+      ...prev,
+      [sheetName]: !prev[sheetName]
+    }))
+  }
+
+  // Get sheet summary
+  const getSheetSummary = (sheetIdeas: typeof generatedIdeas) => {
+    const totalIdeas = sheetIdeas.length
+    const totalSlides = sheetIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)
+    return { totalIdeas, totalSlides }
+  }
+
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -3386,6 +3588,24 @@ export function GeneratePage() {
               Generated Ideas ({generatedIdeas.length})
             </h3>
             <div className="flex items-center gap-2">
+              {/* Group by Sheet Toggle */}
+              <button
+                onClick={() => setIsGroupedBySheet(!isGroupedBySheet)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                  isGroupedBySheet 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                style={isGroupedBySheet ? {
+                  backgroundColor: colors.accent,
+                  color: 'white'
+                } : {
+                  backgroundColor: colors.surface2,
+                  color: colors.textMuted
+                }}
+              >
+                {isGroupedBySheet ? '📁 Grouped' : '📋 Flat'}
+              </button>
               {generatedIdeas.length > 0 && (
                 <button
                   onClick={(e) => {
@@ -3455,224 +3675,452 @@ export function GeneratePage() {
               </div>
             </div>
           ) : (
-            <AnimatedList
-              items={generatedIdeas.map((idea) => (
-                <div
-                  key={idea.ideaId}
-                  className="rounded-lg border relative cursor-pointer transition-all duration-200"
-                  style={{ 
-                    backgroundColor: colors.surface, 
-                    borderColor: colors.border 
-                  }}
-                  onClick={() => toggleIdeaExpansion(idea.ideaId)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                    e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)'
-                    e.currentTarget.style.boxShadow = 'none'
-                  }}
-                >
-                  <GlowingEffect
-                    spread={40}
-                    glow={true}
-                    disabled={false}
-                    proximity={64}
-                    inactiveZone={0.01}
-                    variant="purple"
-                    borderWidth={1}
-                  />
-                  {/* Idea Header */}
-                  <div
-                    className="p-4 flex items-center justify-between relative z-10"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
-                           style={{ backgroundColor: colors.accent, color: 'white' }}>
-                        {idea.ideaId}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
-                          Idea {idea.ideaId}
-                        </h4>
-                        <p className="text-xs truncate max-w-md" style={{ color: colors.textMuted }}>
-                          {idea.ideaText}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-1 rounded font-medium" style={{ 
-                        backgroundColor: colors.accent + '20', 
-                        color: colors.accent 
-                      }}>
-                        {getIdeaFormatLabel(idea)}
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded" style={{ 
-                        backgroundColor: colors.surface2, 
-                        color: colors.textMuted 
-                      }}>
-                        {idea.slides.length} slides
-                      </span>
-                      <ChevronRightIcon 
-                        size="sm" 
-                        color={colors.textMuted}
-                        className={`transition-transform ${idea.isExpanded ? 'rotate-90' : ''}`}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Expanded Slides */}
-                  {idea.isExpanded && (
-                    <div className="px-4 pb-4 relative z-10" onClick={(e) => e.stopPropagation()}>
-                      <div className="grid grid-cols-2 gap-3">
-                        {idea.slides.map((slide, slideIndex) => {
-                          const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
-                          return (
-                          <div
-                            key={slide.id}
-                              className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
-                              selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
-                            }`}
-                            style={{ 
-                              backgroundColor: colors.surface2, 
-                                borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
-                                aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+            isGroupedBySheet ? (
+              // Grouped by Sheet View
+              <div className="space-y-4">
+                {Object.entries(getIdeasBySheet()).map(([sheetName, sheetIdeas]) => {
+                  const { totalIdeas, totalSlides } = getSheetSummary(sheetIdeas)
+                  const isSheetExpanded = expandedSheets[sheetName] ?? true
+
+                  return (
+                    <div key={sheetName} className="rounded-lg border" style={{ borderColor: colors.border }}>
+                      {/* Sheet Header */}
+                      <div
+                        className="p-4 flex items-center justify-between cursor-pointer"
+                        style={{ backgroundColor: colors.surface }}
+                        onClick={() => toggleSheetExpansion(sheetName)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isSheetExpanded ? (
+                            <ChevronRightIcon size="md" color={colors.text} className="rotate-90" />
+                          ) : (
+                            <ChevronRightIcon size="md" color={colors.text} />
+                          )}
+                          <h4 className="text-lg font-semibold" style={{ color: colors.text }}>
+                            {sheetName}
+                          </h4>
+                          <span className="text-sm px-2 py-1 rounded font-medium" style={{
+                            backgroundColor: colors.accent + '20',
+                            color: colors.accent
+                          }}>
+                            {totalIdeas} Ideas / {totalSlides} Slides
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              exportSheetDraftsAsZIP(sheetName)
                             }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedDraft(slide.id)
-                              }}
+                            disabled={isExporting}
+                            className="px-3 py-1 rounded-lg border text-xs flex items-center gap-1 transition-all hover:scale-105"
+                            style={{
+                              backgroundColor: colors.accent,
+                              borderColor: colors.accent,
+                              color: '#ffffff',
+                              fontWeight: '600'
+                            }}
                           >
-                            <SlideEditorCanvas
-                              key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
-                              src={slide.image}
-                              bgColor="#000000"
-                              className="w-full h-full rounded-lg"
-                              priority="low"
-                              drawOverlay={(ctx, cssW, cssH) => {
-                                // Draw text overlay for thumbnails
-                                if (!step2Data || !slide.caption) return
-                                
-                                const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
-                                
-                                // Calculate scale factor to fit thumbnail while maintaining aspect ratio
-                                const fullWidth = slide.format === '3:4' ? 1080 : 1080
-                                const fullHeight = slide.format === '3:4' ? 1440 : 1920
-                                const scaleX = cssW / fullWidth
-                                const scaleY = cssH / fullHeight
-                                const scale = Math.min(scaleX, scaleY)
-                                
-                                
-                                // Use EXACT same settings as Step 2, but ensure text fits within thumbnail bounds
-                                const scaledFontSize = (step2Data.fontSize || 52) * scale
-                                const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
-                                const scaledSafeMargin = 64 * scale
-                                
-                                // Ensure text width doesn't exceed thumbnail bounds
-                                const maxTextWidth = Math.min(
-                                  (fullWidth - 128) * scale,  // Scaled full width minus margins
-                                  cssW - (scaledSafeMargin * 2)  // Actual thumbnail width minus margins
-                                )
-                                
-                                
-                                const layout = layoutDesktop(ctx, {
-                                  text: slide.caption,
-                                  fontFamily: 'TikTok Sans',
-                                  fontWeight: fontWeight as 400 | 500 | 600,
-                                  fontPx: scaledFontSize,
-                                  lineSpacingPx: scaledLineSpacing,
-                                  yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
-                                  xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
-                                  align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
-                                  horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
-                                  textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
-                                  safeMarginPx: scaledSafeMargin,
-                                  maxTextWidthPx: maxTextWidth, // Use the smaller of the two widths
-                                  deskW: cssW, // Use actual thumbnail width
-                                  deskH: cssH, // Use actual thumbnail height
-                                  useSafeZone: step2Data.useSafeZone ?? true,
-                                  safeZoneFormat: slide.format || step2Data.safeZoneFormat
-                                })
-                                
+                            <DownloadIcon size="sm" />
+                            Export {sheetName}
+                          </button>
+                        </div>
+                      </div>
 
-                                // Draw text
-                                ctx.save()
-                                ctx.translate(layout.centerX, 0)
-                                ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
-
-                                layout.lines.forEach((line, i) => {
-                                  const x = 0
-                                  const y = layout.baselines[i]
-
-                                  if ((step2Data.outlinePx || 0) > 0) {
-                                    ctx.strokeStyle = '#000000'
-                                    ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
-                                    ctx.lineJoin = 'round'
-                                    ctx.miterLimit = 2
-                                    ctx.strokeText(line, x, y)
-                                  }
-
-                                  ctx.fillStyle = '#FFFFFF'
-                                  ctx.fillText(line, x, y)
-                                })
-
-                                ctx.restore()
+                      {/* Ideas List for this Sheet */}
+                      {isSheetExpanded && (
+                        <div className="p-4 space-y-3" style={{ backgroundColor: colors.surface2 }}>
+                          {sheetIdeas.map((idea) => (
+                            <div
+                              key={idea.ideaId}
+                              className="rounded-lg border relative cursor-pointer transition-all duration-200"
+                              style={{
+                                backgroundColor: colors.surface,
+                                borderColor: colors.border
                               }}
-                            />
-                              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                              {slideIndex + 1}
+                              onClick={() => toggleIdeaExpansion(idea.ideaId)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)'
+                                e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.boxShadow = 'none'
+                              }}
+                            >
+                              <GlowingEffect
+                                spread={40}
+                                glow={true}
+                                disabled={false}
+                                proximity={64}
+                                inactiveZone={0.01}
+                                variant="purple"
+                                borderWidth={1}
+                              />
+                              {/* Idea Header */}
+                              <div className="p-3 flex items-center justify-between relative z-10">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                                       style={{ backgroundColor: colors.accent, color: 'white' }}>
+                                    {idea.ideaId}
+                                  </div>
+                                  <div className="flex-1">
+                                    <h5 className="text-sm font-semibold" style={{ color: colors.text }}>
+                                      Idea {idea.ideaId}
+                                    </h5>
+                                    <p className="text-xs truncate max-w-sm" style={{ color: colors.textMuted }}>
+                                      {idea.ideaText}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs px-2 py-1 rounded font-medium" style={{
+                                    backgroundColor: colors.accent + '20',
+                                    color: colors.accent
+                                  }}>
+                                    {idea.slides.length} Slides
+                                  </span>
+                                  {idea.isExpanded ? (
+                                    <ChevronRightIcon size="sm" color={colors.textMuted} className="rotate-90" />
+                                  ) : (
+                                    <ChevronRightIcon size="sm" color={colors.textMuted} />
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Expanded Slides */}
+                              {idea.isExpanded && (
+                                <div className="px-3 pb-3 relative z-10" onClick={(e) => e.stopPropagation()}>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {idea.slides.map((slide, slideIndex) => {
+                                      const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                                      return (
+                                        <div
+                                          key={slide.id}
+                                          className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
+                                            selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
+                                          }`}
+                                          style={{
+                                            backgroundColor: colors.surface2,
+                                            borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                                            aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                                          }}
+                                          onClick={() => setSelectedDraft(slide.id)}
+                                        >
+                                          <SlideEditorCanvas
+                                            key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                                            src={slide.image}
+                                            bgColor="#000000"
+                                            className="w-full h-full rounded-lg"
+                                            priority="low"
+                                            drawOverlay={(ctx, cssW, cssH) => {
+                                              if (!step2Data || !slide.caption) return
+                                              
+                                              const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
+                                              const fullWidth = slide.format === '3:4' ? 1080 : 1080
+                                              const fullHeight = slide.format === '3:4' ? 1440 : 1920
+                                              const scaleX = cssW / fullWidth
+                                              const scaleY = cssH / fullHeight
+                                              const scale = Math.min(scaleX, scaleY)
+                                              
+                                              const scaledFontSize = (step2Data.fontSize || 52) * scale
+                                              const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
+                                              const scaledSafeMargin = 64 * scale
+                                              
+                                              const maxTextWidth = Math.min(
+                                                (fullWidth - 128) * scale,
+                                                cssW - (scaledSafeMargin * 2)
+                                              )
+                                              
+                                              const layout = layoutDesktop(ctx, {
+                                                text: slide.caption,
+                                                fontFamily: 'TikTok Sans',
+                                                fontWeight: fontWeight as 400 | 500 | 600,
+                                                fontPx: scaledFontSize,
+                                                lineSpacingPx: scaledLineSpacing,
+                                                yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
+                                                xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
+                                                align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
+                                                horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
+                                                textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
+                                                safeMarginPx: scaledSafeMargin,
+                                                maxTextWidthPx: maxTextWidth,
+                                                deskW: cssW,
+                                                deskH: cssH,
+                                                useSafeZone: step2Data.useSafeZone ?? true,
+                                                safeZoneFormat: slide.format || step2Data.safeZoneFormat
+                                              })
+
+                                              ctx.save()
+                                              ctx.translate(layout.centerX, 0)
+                                              ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
+
+                                              layout.lines.forEach((line, i) => {
+                                                const x = 0
+                                                const y = layout.baselines[i]
+
+                                                if ((step2Data.outlinePx || 0) > 0) {
+                                                  ctx.strokeStyle = '#000000'
+                                                  ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
+                                                  ctx.lineJoin = 'round'
+                                                  ctx.miterLimit = 2
+                                                  ctx.strokeText(line, x, y)
+                                                }
+
+                                                ctx.fillStyle = '#FFFFFF'
+                                                ctx.fillText(line, x, y)
+                                              })
+
+                                              ctx.restore()
+                                            }}
+                                          />
+                                          <div className="absolute top-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                                            {slideIndex + 1}
+                                          </div>
+                                          <div className="absolute top-1 left-1 bg-purple-600 bg-opacity-90 text-white text-xs px-1 py-0.5 rounded font-medium">
+                                            {slide.format}
+                                          </div>
+                                          <div className="absolute bottom-1 left-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                                            {slide.imageSource === 'ai-method' ? 'AI' : 'Aff'}
+                                          </div>
+                                          <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleEditSlide(ideaIndex, slideIndex)
+                                              }}
+                                              className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-1 py-0.5 rounded flex items-center gap-1"
+                                              title="Edit slide"
+                                            >
+                                              <SettingsIcon size="sm" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                randomizeSingleSlideImage(ideaIndex, slideIndex)
+                                              }}
+                                              className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-1 py-0.5 rounded flex items-center gap-1 cursor-pointer z-50 relative"
+                                              title="Randomize this slide's image"
+                                            >
+                                              <ShuffleIcon size="sm" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                              <div className="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-medium">
-                                {slide.format}
-                            </div>
-                            {/* Show image source indicator */}
-                              <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                              {slide.imageSource === 'ai-method' ? 'AI Method' : 'Affiliate'}
-                            </div>
-                              {/* Action buttons - shown on hover */}
-                              <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleEditSlide(ideaIndex, slideIndex)
-                                  }}
-                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
-                                  title="Edit slide"
-                                >
-                                  <SettingsIcon size="sm" />
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    console.log(`🔥 Single slide randomize button clicked! Idea: ${ideaIndex}, Slide: ${slideIndex}`)
-                                    console.log('Slide current image:', slide.image)
-                                    console.log('Available images:', availableImages.length)
-                                    randomizeSingleSlideImage(ideaIndex, slideIndex)
-                                  }}
-                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1 cursor-pointer z-50 relative"
-                                  title="Randomize this slide's image"
-                                >
-                                  <ShuffleIcon size="sm" />
-                                  🎲 Randomize
-                                </button>
-                          </div>
-                            </div>
-                          )
-                        })}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              // Flat View (Original AnimatedList)
+              <AnimatedList
+                items={generatedIdeas.map((idea) => (
+                  <div
+                    key={idea.ideaId}
+                    className="rounded-lg border relative cursor-pointer transition-all duration-200"
+                    style={{ 
+                      backgroundColor: colors.surface, 
+                      borderColor: colors.border 
+                    }}
+                    onClick={() => toggleIdeaExpansion(idea.ideaId)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }}
+                  >
+                    <GlowingEffect
+                      spread={40}
+                      glow={true}
+                      disabled={false}
+                      proximity={64}
+                      inactiveZone={0.01}
+                      variant="purple"
+                      borderWidth={1}
+                    />
+                    {/* Idea Header */}
+                    <div className="p-4 flex items-center justify-between relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                             style={{ backgroundColor: colors.accent, color: 'white' }}>
+                          {idea.ideaId}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
+                            Idea {idea.ideaId}
+                          </h4>
+                          <p className="text-xs truncate max-w-md" style={{ color: colors.textMuted }}>
+                            {idea.ideaText}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-1 rounded font-medium" style={{ 
+                          backgroundColor: colors.accent + '20', 
+                          color: colors.accent 
+                        }}>
+                          {getIdeaFormatLabel(idea)}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded" style={{ 
+                          backgroundColor: colors.surface2, 
+                          color: colors.textMuted 
+                        }}>
+                          {idea.slides.length} slides
+                        </span>
+                        <ChevronRightIcon 
+                          size="sm" 
+                          color={colors.textMuted}
+                          className={`transition-transform ${idea.isExpanded ? 'rotate-90' : ''}`}
+                        />
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-              showGradients={true}
-              enableArrowNavigation={false}
-              displayScrollbar={true}
-            />
-          )}
-        </div>
+                    
+                    {/* Expanded Slides */}
+                    {idea.isExpanded && (
+                      <div className="px-4 pb-4 relative z-10" onClick={(e) => e.stopPropagation()}>
+                        <div className="grid grid-cols-2 gap-3">
+                          {idea.slides.map((slide, slideIndex) => {
+                            const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                            return (
+                              <div
+                                key={slide.id}
+                                className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
+                                  selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
+                                }`}
+                                style={{ 
+                                  backgroundColor: colors.surface2, 
+                                  borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                                  aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedDraft(slide.id)
+                                }}
+                              >
+                                <SlideEditorCanvas
+                                  key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                                  src={slide.image}
+                                  bgColor="#000000"
+                                  className="w-full h-full rounded-lg"
+                                  priority="low"
+                                  drawOverlay={(ctx, cssW, cssH) => {
+                                    if (!step2Data || !slide.caption) return
+                                    
+                                    const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
+                                    const fullWidth = slide.format === '3:4' ? 1080 : 1080
+                                    const fullHeight = slide.format === '3:4' ? 1440 : 1920
+                                    const scaleX = cssW / fullWidth
+                                    const scaleY = cssH / fullHeight
+                                    const scale = Math.min(scaleX, scaleY)
+                                    
+                                    const scaledFontSize = (step2Data.fontSize || 52) * scale
+                                    const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
+                                    const scaledSafeMargin = 64 * scale
+                                    
+                                    const maxTextWidth = Math.min(
+                                      (fullWidth - 128) * scale,
+                                      cssW - (scaledSafeMargin * 2)
+                                    )
+                                    
+                                    const layout = layoutDesktop(ctx, {
+                                      text: slide.caption,
+                                      fontFamily: 'TikTok Sans',
+                                      fontWeight: fontWeight as 400 | 500 | 600,
+                                      fontPx: scaledFontSize,
+                                      lineSpacingPx: scaledLineSpacing,
+                                      yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
+                                      xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
+                                      align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
+                                      horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
+                                      textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
+                                      safeMarginPx: scaledSafeMargin,
+                                      maxTextWidthPx: maxTextWidth,
+                                      deskW: cssW,
+                                      deskH: cssH,
+                                      useSafeZone: step2Data.useSafeZone ?? true,
+                                      safeZoneFormat: slide.format || step2Data.safeZoneFormat
+                                    })
+
+                                    ctx.save()
+                                    ctx.translate(layout.centerX, 0)
+                                    ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
+
+                                    layout.lines.forEach((line, i) => {
+                                      const x = 0
+                                      const y = layout.baselines[i]
+
+                                      if ((step2Data.outlinePx || 0) > 0) {
+                                        ctx.strokeStyle = '#000000'
+                                        ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
+                                        ctx.lineJoin = 'round'
+                                        ctx.miterLimit = 2
+                                        ctx.strokeText(line, x, y)
+                                      }
+
+                                      ctx.fillStyle = '#FFFFFF'
+                                      ctx.fillText(line, x, y)
+                                    })
+
+                                    ctx.restore()
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                                  {slideIndex + 1}
+                                </div>
+                                <div className="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-medium">
+                                  {slide.format}
+                                </div>
+                                <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                                  {slide.imageSource === 'ai-method' ? 'AI Method' : 'Affiliate'}
+                                </div>
+                                <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEditSlide(ideaIndex, slideIndex)
+                                    }}
+                                    className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
+                                    title="Edit slide"
+                                  >
+                                    <SettingsIcon size="sm" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      randomizeSingleSlideImage(ideaIndex, slideIndex)
+                                    }}
+                                    className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1 cursor-pointer z-50 relative"
+                                    title="Randomize this slide's image"
+                                  >
+                                    <ShuffleIcon size="sm" />
+                                    🎲 Randomize
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              />
+            )}
+          </div>
 
         {/* Export Options */}
         <div 
@@ -3949,6 +4397,34 @@ export function GeneratePage() {
           projectName={sessionName}
         />
 
+        {/* Multi-Sheet Mode Toggle */}
+        {currentStep > 0 && (
+          <div className="mb-6 flex items-center justify-center">
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+              <button
+                className={`px-4 py-2 rounded-md transition-all ${
+                  !isMultiSheetMode
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => setIsMultiSheetMode(false)}
+              >
+                Single Sheet
+              </button>
+              <button
+                className={`px-4 py-2 rounded-md transition-all ${
+                  isMultiSheetMode
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => setIsMultiSheetMode(true)}
+              >
+                Multi Sheet
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Slide Editor */}
         {showSlideEditor && editingSlide && step2Data && (
           <SlideEditor
@@ -4026,13 +4502,19 @@ export function GeneratePage() {
         </div>
 
         {/* Step Content */}
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
-        {currentStep === 3 && renderStep2_5()}
-        {currentStep === 4 && renderStep3()}
+        {isMultiSheetMode ? (
+          <MultiSheetFlow />
+        ) : (
+          <>
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep2_5()}
+            {currentStep === 4 && renderStep3()}
+          </>
+        )}
 
         {/* Navigation */}
-        {currentStep !== 3 && (
+        {!isMultiSheetMode && currentStep !== 3 && (
         <div className="flex justify-between mt-8">
           <button
             onClick={prevStep}
