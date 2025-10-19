@@ -24,6 +24,8 @@ export function useCanvasRender(canvas: HTMLCanvasElement | null, opts: RenderOp
     const { src, bgColor = "#000000", drawOverlay, preferBitmap = true, priority = 'low' } = opts;
     let cancelled = false;
 
+    // Early return if no source and no overlay
+    if (!src && !drawOverlay) return;
 
     // Ensure backing store matches CSS size
     const { ctx, dpr, cssW, cssH } = resizeCanvasToCss(canvas);
