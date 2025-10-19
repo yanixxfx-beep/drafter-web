@@ -253,6 +253,8 @@ export function GeneratePage() {
   }>>([])
   const [selectedDraft, setSelectedDraft] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isGroupedBySheet, setIsGroupedBySheet] = useState(false)
+  const [expandedSheets, setExpandedSheets] = useState<Record<string, boolean>>({})
   
   // Image randomization tracking
   const [usedImages, setUsedImages] = useState<Set<string>>(new Set())
@@ -3538,6 +3540,78 @@ export function GeneratePage() {
     return 'Unknown'
   }
 
+  // Group ideas by source sheet
+  const getIdeasBySheet = () => {
+    const grouped = generatedIdeas.reduce((acc, idea) => {
+      const sheetName = idea.sourceSheet
+      if (!acc[sheetName]) {
+        acc[sheetName] = []
+      }
+      acc[sheetName].push(idea)
+      return acc
+    }, {} as Record<string, typeof generatedIdeas>)
+    
+    return grouped
+  }
+
+  // Toggle sheet expansion
+  const toggleSheetExpansion = (sheetName: string) => {
+    setExpandedSheets(prev => ({
+      ...prev,
+      [sheetName]: !prev[sheetName]
+    }))
+  }
+
+  // Get sheet summary
+  const getSheetSummary = (sheetIdeas: typeof generatedIdeas) => {
+    const totalIdeas = sheetIdeas.length
+    const totalSlides = sheetIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)
+    return { totalIdeas, totalSlides }
+  }
+
+  // Export all drafts for a specific sheet
+  const exportSheetDraftsAsZIP = async (sheetName: string) => {
+    const ideasBySheet = getIdeasBySheet()
+    const sheetIdeas = ideasBySheet[sheetName] || []
+    
+    if (sheetIdeas.length === 0) {
+      alert(`No drafts found for sheet: ${sheetName}`)
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      
+      let slideCount = 0
+      for (const idea of sheetIdeas) {
+        for (const slide of idea.slides) {
+          if (slide.thumbnail) {
+            // Convert dataURL to blob
+            const response = await fetch(slide.thumbnail)
+            const blob = await response.blob()
+            zip.file(`${idea.ideaId}-${slide.slideNumber}-${slide.id}.png`, blob)
+            slideCount++
+          }
+        }
+      }
+      
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${step1Data?.spreadsheetName || 'spreadsheet'}_${sheetName.toLowerCase()}.zip`
+      link.click()
+      
+      console.log(`✅ Exported ${slideCount} slides for sheet: ${sheetName}`)
+    } catch (error) {
+      console.error('Failed to export sheet drafts:', error)
+      alert('Failed to export drafts. Please try again.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -3557,6 +3631,24 @@ export function GeneratePage() {
               Generated Ideas ({generatedIdeas.length})
             </h3>
             <div className="flex items-center gap-2">
+              {/* Group by Sheet Toggle */}
+              <button
+                onClick={() => setIsGroupedBySheet(!isGroupedBySheet)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                  isGroupedBySheet 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                style={isGroupedBySheet ? {
+                  backgroundColor: colors.accent,
+                  color: 'white'
+                } : {
+                  backgroundColor: colors.surface2,
+                  color: colors.textMuted
+                }}
+              >
+                {isGroupedBySheet ? '📁 Grouped' : '📋 Flat'}
+              </button>
               {generatedIdeas.length > 0 && (
                 <button
                   onClick={(e) => {
@@ -3626,224 +3718,452 @@ export function GeneratePage() {
               </div>
             </div>
           ) : (
-            <AnimatedList
-              items={generatedIdeas.map((idea) => (
-                <div
-                  key={idea.ideaId}
-                  className="rounded-lg border relative cursor-pointer transition-all duration-200"
-                  style={{ 
-                    backgroundColor: colors.surface, 
-                    borderColor: colors.border 
-                  }}
-                  onClick={() => toggleIdeaExpansion(idea.ideaId)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                    e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)'
-                    e.currentTarget.style.boxShadow = 'none'
-                  }}
-                >
-                  <GlowingEffect
-                    spread={40}
-                    glow={true}
-                    disabled={false}
-                    proximity={64}
-                    inactiveZone={0.01}
-                    variant="purple"
-                    borderWidth={1}
-                  />
-                  {/* Idea Header */}
-                  <div
-                    className="p-4 flex items-center justify-between relative z-10"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
-                           style={{ backgroundColor: colors.accent, color: 'white' }}>
-                        {idea.ideaId}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
-                          Idea {idea.ideaId}
-                        </h4>
-                        <p className="text-xs truncate max-w-md" style={{ color: colors.textMuted }}>
-                          {idea.ideaText}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-1 rounded font-medium" style={{ 
-                        backgroundColor: colors.accent + '20', 
-                        color: colors.accent 
-                      }}>
-                        {getIdeaFormatLabel(idea)}
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded" style={{ 
-                        backgroundColor: colors.surface2, 
-                        color: colors.textMuted 
-                      }}>
-                        {idea.slides.length} slides
-                      </span>
-                      <ChevronRightIcon 
-                        size="sm" 
-                        color={colors.textMuted}
-                        className={`transition-transform ${idea.isExpanded ? 'rotate-90' : ''}`}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Expanded Slides */}
-                  {idea.isExpanded && (
-                    <div className="px-4 pb-4 relative z-10" onClick={(e) => e.stopPropagation()}>
-                      <div className="grid grid-cols-2 gap-3">
-                        {idea.slides.map((slide, slideIndex) => {
-                          const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
-                          return (
-                          <div
-                            key={slide.id}
-                              className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
-                              selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
-                            }`}
-                            style={{ 
-                              backgroundColor: colors.surface2, 
-                                borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
-                                aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+            isGroupedBySheet ? (
+              // Grouped by Sheet View
+              <div className="space-y-4">
+                {Object.entries(getIdeasBySheet()).map(([sheetName, sheetIdeas]) => {
+                  const { totalIdeas, totalSlides } = getSheetSummary(sheetIdeas)
+                  const isSheetExpanded = expandedSheets[sheetName] ?? true
+
+                  return (
+                    <div key={sheetName} className="rounded-lg border" style={{ borderColor: colors.border }}>
+                      {/* Sheet Header */}
+                      <div
+                        className="p-4 flex items-center justify-between cursor-pointer"
+                        style={{ backgroundColor: colors.surface }}
+                        onClick={() => toggleSheetExpansion(sheetName)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isSheetExpanded ? (
+                            <ChevronRightIcon size="md" color={colors.text} className="rotate-90" />
+                          ) : (
+                            <ChevronRightIcon size="md" color={colors.text} />
+                          )}
+                          <h4 className="text-lg font-semibold" style={{ color: colors.text }}>
+                            {sheetName}
+                          </h4>
+                          <span className="text-sm px-2 py-1 rounded font-medium" style={{
+                            backgroundColor: colors.accent + '20',
+                            color: colors.accent
+                          }}>
+                            {totalIdeas} Ideas / {totalSlides} Slides
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              exportSheetDraftsAsZIP(sheetName)
                             }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedDraft(slide.id)
-                              }}
+                            disabled={isExporting}
+                            className="px-3 py-1 rounded-lg border text-xs flex items-center gap-1 transition-all hover:scale-105"
+                            style={{
+                              backgroundColor: colors.accent,
+                              borderColor: colors.accent,
+                              color: '#ffffff',
+                              fontWeight: '600'
+                            }}
                           >
-                            <SlideEditorCanvas
-                              key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
-                              src={slide.image}
-                              bgColor="#000000"
-                              className="w-full h-full rounded-lg"
-                              priority="low"
-                              drawOverlay={(ctx, cssW, cssH) => {
-                                // Draw text overlay for thumbnails
-                                if (!step2Data || !slide.caption) return
-                                
-                                const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
-                                
-                                // Calculate scale factor to fit thumbnail while maintaining aspect ratio
-                                const fullWidth = slide.format === '3:4' ? 1080 : 1080
-                                const fullHeight = slide.format === '3:4' ? 1440 : 1920
-                                const scaleX = cssW / fullWidth
-                                const scaleY = cssH / fullHeight
-                                const scale = Math.min(scaleX, scaleY)
-                                
-                                
-                                // Use EXACT same settings as Step 2, but ensure text fits within thumbnail bounds
-                                const scaledFontSize = (step2Data.fontSize || 52) * scale
-                                const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
-                                const scaledSafeMargin = 64 * scale
-                                
-                                // Ensure text width doesn't exceed thumbnail bounds
-                                const maxTextWidth = Math.min(
-                                  (fullWidth - 128) * scale,  // Scaled full width minus margins
-                                  cssW - (scaledSafeMargin * 2)  // Actual thumbnail width minus margins
-                                )
-                                
-                                
-                                const layout = layoutDesktop(ctx, {
-                                  text: slide.caption,
-                                  fontFamily: 'TikTok Sans',
-                                  fontWeight: fontWeight as 400 | 500 | 600,
-                                  fontPx: scaledFontSize,
-                                  lineSpacingPx: scaledLineSpacing,
-                                  yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
-                                  xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
-                                  align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
-                                  horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
-                                  textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
-                                  safeMarginPx: scaledSafeMargin,
-                                  maxTextWidthPx: maxTextWidth, // Use the smaller of the two widths
-                                  deskW: cssW, // Use actual thumbnail width
-                                  deskH: cssH, // Use actual thumbnail height
-                                  useSafeZone: step2Data.useSafeZone ?? true,
-                                  safeZoneFormat: slide.format || step2Data.safeZoneFormat
-                                })
-                                
+                            <DownloadIcon size="sm" />
+                            Export {sheetName}
+                          </button>
+                        </div>
+                      </div>
 
-                                // Draw text
-                                ctx.save()
-                                ctx.translate(layout.centerX, 0)
-                                ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
-
-                                layout.lines.forEach((line, i) => {
-                                  const x = 0
-                                  const y = layout.baselines[i]
-
-                                  if ((step2Data.outlinePx || 0) > 0) {
-                                    ctx.strokeStyle = '#000000'
-                                    ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
-                                    ctx.lineJoin = 'round'
-                                    ctx.miterLimit = 2
-                                    ctx.strokeText(line, x, y)
-                                  }
-
-                                  ctx.fillStyle = '#FFFFFF'
-                                  ctx.fillText(line, x, y)
-                                })
-
-                                ctx.restore()
+                      {/* Ideas List for this Sheet */}
+                      {isSheetExpanded && (
+                        <div className="p-4 space-y-3" style={{ backgroundColor: colors.surface2 }}>
+                          {sheetIdeas.map((idea) => (
+                            <div
+                              key={idea.ideaId}
+                              className="rounded-lg border relative cursor-pointer transition-all duration-200"
+                              style={{
+                                backgroundColor: colors.surface,
+                                borderColor: colors.border
                               }}
-                            />
-                              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                              {slideIndex + 1}
+                              onClick={() => toggleIdeaExpansion(idea.ideaId)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-2px)'
+                                e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.boxShadow = 'none'
+                              }}
+                            >
+                              <GlowingEffect
+                                spread={40}
+                                glow={true}
+                                disabled={false}
+                                proximity={64}
+                                inactiveZone={0.01}
+                                variant="purple"
+                                borderWidth={1}
+                              />
+                              {/* Idea Header */}
+                              <div className="p-3 flex items-center justify-between relative z-10">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                                       style={{ backgroundColor: colors.accent, color: 'white' }}>
+                                    {idea.ideaId}
+                                  </div>
+                                  <div className="flex-1">
+                                    <h5 className="text-sm font-semibold" style={{ color: colors.text }}>
+                                      Idea {idea.ideaId}
+                                    </h5>
+                                    <p className="text-xs truncate max-w-sm" style={{ color: colors.textMuted }}>
+                                      {idea.ideaText}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs px-2 py-1 rounded font-medium" style={{
+                                    backgroundColor: colors.accent + '20',
+                                    color: colors.accent
+                                  }}>
+                                    {idea.slides.length} Slides
+                                  </span>
+                                  {idea.isExpanded ? (
+                                    <ChevronRightIcon size="sm" color={colors.textMuted} className="rotate-90" />
+                                  ) : (
+                                    <ChevronRightIcon size="sm" color={colors.textMuted} />
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Expanded Slides */}
+                              {idea.isExpanded && (
+                                <div className="px-3 pb-3 relative z-10" onClick={(e) => e.stopPropagation()}>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {idea.slides.map((slide, slideIndex) => {
+                                      const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                                      return (
+                                        <div
+                                          key={slide.id}
+                                          className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
+                                            selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
+                                          }`}
+                                          style={{
+                                            backgroundColor: colors.surface2,
+                                            borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                                            aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                                          }}
+                                          onClick={() => setSelectedDraft(slide.id)}
+                                        >
+                                          <SlideEditorCanvas
+                                            key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                                            src={slide.image}
+                                            bgColor="#000000"
+                                            className="w-full h-full rounded-lg"
+                                            priority="low"
+                                            drawOverlay={(ctx, cssW, cssH) => {
+                                              if (!step2Data || !slide.caption) return
+                                              
+                                              const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
+                                              const fullWidth = slide.format === '3:4' ? 1080 : 1080
+                                              const fullHeight = slide.format === '3:4' ? 1440 : 1920
+                                              const scaleX = cssW / fullWidth
+                                              const scaleY = cssH / fullHeight
+                                              const scale = Math.min(scaleX, scaleY)
+                                              
+                                              const scaledFontSize = (step2Data.fontSize || 52) * scale
+                                              const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
+                                              const scaledSafeMargin = 64 * scale
+                                              
+                                              const maxTextWidth = Math.min(
+                                                (fullWidth - 128) * scale,
+                                                cssW - (scaledSafeMargin * 2)
+                                              )
+                                              
+                                              const layout = layoutDesktop(ctx, {
+                                                text: slide.caption,
+                                                fontFamily: 'TikTok Sans',
+                                                fontWeight: fontWeight as 400 | 500 | 600,
+                                                fontPx: scaledFontSize,
+                                                lineSpacingPx: scaledLineSpacing,
+                                                yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
+                                                xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
+                                                align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
+                                                horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
+                                                textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
+                                                safeMarginPx: scaledSafeMargin,
+                                                maxTextWidthPx: maxTextWidth,
+                                                deskW: cssW,
+                                                deskH: cssH,
+                                                useSafeZone: step2Data.useSafeZone ?? true,
+                                                safeZoneFormat: slide.format || step2Data.safeZoneFormat
+                                              })
+
+                                              ctx.save()
+                                              ctx.translate(layout.centerX, 0)
+                                              ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
+
+                                              layout.lines.forEach((line, i) => {
+                                                const x = 0
+                                                const y = layout.baselines[i]
+
+                                                if ((step2Data.outlinePx || 0) > 0) {
+                                                  ctx.strokeStyle = '#000000'
+                                                  ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
+                                                  ctx.lineJoin = 'round'
+                                                  ctx.miterLimit = 2
+                                                  ctx.strokeText(line, x, y)
+                                                }
+
+                                                ctx.fillStyle = '#FFFFFF'
+                                                ctx.fillText(line, x, y)
+                                              })
+
+                                              ctx.restore()
+                                            }}
+                                          />
+                                          <div className="absolute top-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                                            {slideIndex + 1}
+                                          </div>
+                                          <div className="absolute top-1 left-1 bg-purple-600 bg-opacity-90 text-white text-xs px-1 py-0.5 rounded font-medium">
+                                            {slide.format}
+                                          </div>
+                                          <div className="absolute bottom-1 left-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                                            {slide.imageSource === 'ai-method' ? 'AI' : 'Aff'}
+                                          </div>
+                                          <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleEditSlide(ideaIndex, slideIndex)
+                                              }}
+                                              className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-1 py-0.5 rounded flex items-center gap-1"
+                                              title="Edit slide"
+                                            >
+                                              <SettingsIcon size="sm" />
+                                            </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                randomizeSingleSlideImage(ideaIndex, slideIndex)
+                                              }}
+                                              className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-1 py-0.5 rounded flex items-center gap-1 cursor-pointer z-50 relative"
+                                              title="Randomize this slide's image"
+                                            >
+                                              <ShuffleIcon size="sm" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                              <div className="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-medium">
-                                {slide.format}
-                            </div>
-                            {/* Show image source indicator */}
-                              <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                              {slide.imageSource === 'ai-method' ? 'AI Method' : 'Affiliate'}
-                            </div>
-                              {/* Action buttons - shown on hover */}
-                              <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleEditSlide(ideaIndex, slideIndex)
-                                  }}
-                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
-                                  title="Edit slide"
-                                >
-                                  <SettingsIcon size="sm" />
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    console.log(`🔥 Single slide randomize button clicked! Idea: ${ideaIndex}, Slide: ${slideIndex}`)
-                                    console.log('Slide current image:', slide.image)
-                                    console.log('Available images:', availableImages.length)
-                                    randomizeSingleSlideImage(ideaIndex, slideIndex)
-                                  }}
-                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1 cursor-pointer z-50 relative"
-                                  title="Randomize this slide's image"
-                                >
-                                  <ShuffleIcon size="sm" />
-                                  🎲 Randomize
-                                </button>
-                          </div>
-                            </div>
-                          )
-                        })}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              // Flat View (Original AnimatedList)
+              <AnimatedList
+                items={generatedIdeas.map((idea) => (
+                  <div
+                    key={idea.ideaId}
+                    className="rounded-lg border relative cursor-pointer transition-all duration-200"
+                    style={{ 
+                      backgroundColor: colors.surface, 
+                      borderColor: colors.border 
+                    }}
+                    onClick={() => toggleIdeaExpansion(idea.ideaId)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)'
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }}
+                  >
+                    <GlowingEffect
+                      spread={40}
+                      glow={true}
+                      disabled={false}
+                      proximity={64}
+                      inactiveZone={0.01}
+                      variant="purple"
+                      borderWidth={1}
+                    />
+                    {/* Idea Header */}
+                    <div className="p-4 flex items-center justify-between relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                             style={{ backgroundColor: colors.accent, color: 'white' }}>
+                          {idea.ideaId}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
+                            Idea {idea.ideaId}
+                          </h4>
+                          <p className="text-xs truncate max-w-md" style={{ color: colors.textMuted }}>
+                            {idea.ideaText}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-1 rounded font-medium" style={{ 
+                          backgroundColor: colors.accent + '20', 
+                          color: colors.accent 
+                        }}>
+                          {getIdeaFormatLabel(idea)}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded" style={{ 
+                          backgroundColor: colors.surface2, 
+                          color: colors.textMuted 
+                        }}>
+                          {idea.slides.length} slides
+                        </span>
+                        <ChevronRightIcon 
+                          size="sm" 
+                          color={colors.textMuted}
+                          className={`transition-transform ${idea.isExpanded ? 'rotate-90' : ''}`}
+                        />
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-              showGradients={true}
-              enableArrowNavigation={false}
-              displayScrollbar={true}
-            />
-          )}
-        </div>
+                    
+                    {/* Expanded Slides */}
+                    {idea.isExpanded && (
+                      <div className="px-4 pb-4 relative z-10" onClick={(e) => e.stopPropagation()}>
+                        <div className="grid grid-cols-2 gap-3">
+                          {idea.slides.map((slide, slideIndex) => {
+                            const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                            return (
+                              <div
+                                key={slide.id}
+                                className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
+                                  selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
+                                }`}
+                                style={{ 
+                                  backgroundColor: colors.surface2, 
+                                  borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                                  aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedDraft(slide.id)
+                                }}
+                              >
+                                <SlideEditorCanvas
+                                  key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                                  src={slide.image}
+                                  bgColor="#000000"
+                                  className="w-full h-full rounded-lg"
+                                  priority="low"
+                                  drawOverlay={(ctx, cssW, cssH) => {
+                                    if (!step2Data || !slide.caption) return
+                                    
+                                    const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
+                                    const fullWidth = slide.format === '3:4' ? 1080 : 1080
+                                    const fullHeight = slide.format === '3:4' ? 1440 : 1920
+                                    const scaleX = cssW / fullWidth
+                                    const scaleY = cssH / fullHeight
+                                    const scale = Math.min(scaleX, scaleY)
+                                    
+                                    const scaledFontSize = (step2Data.fontSize || 52) * scale
+                                    const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
+                                    const scaledSafeMargin = 64 * scale
+                                    
+                                    const maxTextWidth = Math.min(
+                                      (fullWidth - 128) * scale,
+                                      cssW - (scaledSafeMargin * 2)
+                                    )
+                                    
+                                    const layout = layoutDesktop(ctx, {
+                                      text: slide.caption,
+                                      fontFamily: 'TikTok Sans',
+                                      fontWeight: fontWeight as 400 | 500 | 600,
+                                      fontPx: scaledFontSize,
+                                      lineSpacingPx: scaledLineSpacing,
+                                      yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
+                                      xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
+                                      align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
+                                      horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
+                                      textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
+                                      safeMarginPx: scaledSafeMargin,
+                                      maxTextWidthPx: maxTextWidth,
+                                      deskW: cssW,
+                                      deskH: cssH,
+                                      useSafeZone: step2Data.useSafeZone ?? true,
+                                      safeZoneFormat: slide.format || step2Data.safeZoneFormat
+                                    })
+
+                                    ctx.save()
+                                    ctx.translate(layout.centerX, 0)
+                                    ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
+
+                                    layout.lines.forEach((line, i) => {
+                                      const x = 0
+                                      const y = layout.baselines[i]
+
+                                      if ((step2Data.outlinePx || 0) > 0) {
+                                        ctx.strokeStyle = '#000000'
+                                        ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
+                                        ctx.lineJoin = 'round'
+                                        ctx.miterLimit = 2
+                                        ctx.strokeText(line, x, y)
+                                      }
+
+                                      ctx.fillStyle = '#FFFFFF'
+                                      ctx.fillText(line, x, y)
+                                    })
+
+                                    ctx.restore()
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                                  {slideIndex + 1}
+                                </div>
+                                <div className="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-medium">
+                                  {slide.format}
+                                </div>
+                                <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                                  {slide.imageSource === 'ai-method' ? 'AI Method' : 'Affiliate'}
+                                </div>
+                                <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleEditSlide(ideaIndex, slideIndex)
+                                    }}
+                                    className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
+                                    title="Edit slide"
+                                  >
+                                    <SettingsIcon size="sm" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      randomizeSingleSlideImage(ideaIndex, slideIndex)
+                                    }}
+                                    className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1 cursor-pointer z-50 relative"
+                                    title="Randomize this slide's image"
+                                  >
+                                    <ShuffleIcon size="sm" />
+                                    🎲 Randomize
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              />
+            )}
+          </div>
 
         {/* Export Options */}
         <div 
