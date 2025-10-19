@@ -44,7 +44,8 @@ export default function CloudUploadExample() {
         console.log('Using default workspace ID')
       }
 
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
         const result = await storageService.uploadFile({
           workspaceId,
           kind: 'source', // or 'export' or 'thumb'

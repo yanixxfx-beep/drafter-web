@@ -198,6 +198,9 @@ export function GeneratePage() {
   const [generationPreferences, setGenerationPreferences] = useState<GenerationPreferences>({
     format: '9:16'
   })
+  
+  // Multi-sheet mode toggle
+  const [isMultiSheetMode, setIsMultiSheetMode] = useState(false)
   const [isGeneratingDrafts, setIsGeneratingDrafts] = useState(false)
   const [generationProgress, setGenerationProgress] = useState<{
     completed: number
@@ -3891,8 +3894,67 @@ export function GeneratePage() {
           projectName={sessionName}
         />
 
-        {/* Slide Editor */}
-        {showSlideEditor && editingSlide && step2Data && (
+        {/* Multi-Sheet Mode Toggle */}
+        <div className="mb-6 flex justify-center">
+          <div className="flex items-center gap-2 p-1 rounded-lg border" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+            <button
+              onClick={() => setIsMultiSheetMode(false)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                !isMultiSheetMode 
+                  ? 'text-white' 
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+              style={{
+                backgroundColor: !isMultiSheetMode ? colors.accent : 'transparent',
+                color: !isMultiSheetMode ? 'white' : colors.textMuted
+              }}
+            >
+              Single Sheet
+            </button>
+            <button
+              onClick={() => setIsMultiSheetMode(true)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                isMultiSheetMode 
+                  ? 'text-white' 
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+              style={{
+                backgroundColor: isMultiSheetMode ? colors.accent : 'transparent',
+                color: isMultiSheetMode ? 'white' : colors.textMuted
+              }}
+            >
+              Multi Sheet
+            </button>
+          </div>
+        </div>
+
+        {/* Multi-Sheet Mode Content */}
+        {isMultiSheetMode && (
+          <div className="mb-8 p-6 rounded-lg border text-center" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+            <h3 className="text-xl font-semibold mb-4" style={{ color: colors.text }}>
+              Multi-Sheet Mode
+            </h3>
+            <p className="text-sm mb-4" style={{ color: colors.textMuted }}>
+              This feature is coming soon! You'll be able to select multiple sheets from a single spreadsheet and configure them individually.
+            </p>
+            <button
+              onClick={() => setIsMultiSheetMode(false)}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ 
+                backgroundColor: colors.accent, 
+                color: 'white' 
+              }}
+            >
+              Switch to Single Sheet
+            </button>
+          </div>
+        )}
+
+        {/* Single Sheet Mode Content */}
+        {!isMultiSheetMode && (
+          <>
+            {/* Slide Editor */}
+            {showSlideEditor && editingSlide && step2Data && (
           <SlideEditor
             isOpen={showSlideEditor}
             onClose={() => {
@@ -4004,6 +4066,8 @@ export function GeneratePage() {
               {currentStep < 4 && <ChevronRightIcon size="sm" />}
           </button>
         </div>
+        )}
+          </>
         )}
       </div>
     </div>
