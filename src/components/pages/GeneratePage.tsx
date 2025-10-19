@@ -219,6 +219,7 @@ export function GeneratePage() {
   const [availableSheets, setAvailableSheets] = useState<string[]>([])
   const [isLoadingSheets, setIsLoadingSheets] = useState(false)
   const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<string>('')
+  const [selectedSheets, setSelectedSheets] = useState<string[]>([]) // For multiple sheet selection
   
   // Step 2 Preview states
   const [currentCaption, setCurrentCaption] = useState<string>('')
@@ -776,14 +777,27 @@ export function GeneratePage() {
     }
   }
 
+  // Handle sheet toggle selection for multiple sheets
+  const handleSheetToggle = (sheetName: string) => {
+    setSelectedSheets(prev => {
+      if (prev.includes(sheetName)) {
+        // Remove sheet if already selected
+        return prev.filter(sheet => sheet !== sheetName)
+      } else {
+        // Add sheet if not selected
+        return [...prev, sheetName]
+      }
+    })
+  }
+
   const canProceedToStep = (step: number) => {
     switch (step) {
       case 2:
-        return step1Data !== null && step1Data.sheetName !== ''
+        return step1Data !== null && selectedSheets.length > 0
       case 3: // Step 2.5 - Generation
-        return step1Data !== null && step1Data.sheetName !== '' && step2Data !== null
+        return step1Data !== null && selectedSheets.length > 0 && step2Data !== null
       case 4: // Step 3 - Drafts (after generation)
-        return step1Data !== null && step1Data.sheetName !== '' && step2Data !== null && generationPreferences !== null
+        return step1Data !== null && selectedSheets.length > 0 && step2Data !== null && generationPreferences !== null
       default:
         return true
     }
@@ -2636,29 +2650,52 @@ export function GeneratePage() {
                   borderColor: colors.border 
                 }}
               >
-                  <label htmlFor="sheet-select" className="block text-lg font-semibold mb-4" style={{ color: colors.text }}>
-                  Select Day Sheet
-                  </label>
+                <label className="block text-lg font-semibold mb-4" style={{ color: colors.text }}>
+                  Select Day Sheets
+                </label>
                 
-                <select
-                    id="sheet-select"
-                    name="sheetName"
-                  value={step1Data?.sheetName || ''}
-                  onChange={(e) => handleSheetSelect(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
-                >
-                  <option value="">Select a sheet...</option>
+                <div className="space-y-3">
                   {availableSheets.map((sheet) => (
-                    <option key={sheet} value={sheet}>
-                      {sheet}
-                    </option>
+                    <div 
+                      key={sheet}
+                      className="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all hover:bg-opacity-50"
+                      style={{ 
+                        backgroundColor: colors.surface2, 
+                        borderColor: selectedSheets.includes(sheet) ? colors.accent : colors.border,
+                        borderWidth: selectedSheets.includes(sheet) ? '2px' : '1px'
+                      }}
+                      onClick={() => handleSheetToggle(sheet)}
+                    >
+                      <span className="font-medium" style={{ color: colors.text }}>
+                        {sheet}
+                      </span>
+                      
+                      {/* Toggle Circle */}
+                      <div 
+                        className="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                        style={{ 
+                          borderColor: selectedSheets.includes(sheet) ? colors.accent : colors.border,
+                          backgroundColor: selectedSheets.includes(sheet) ? colors.accent : 'transparent'
+                        }}
+                      >
+                        {selectedSheets.includes(sheet) && (
+                          <div 
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: 'white' }}
+                          />
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </select>
+                </div>
+                
+                {selectedSheets.length > 0 && (
+                  <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: colors.accent + '20' }}>
+                    <p className="text-sm font-medium" style={{ color: colors.accent }}>
+                      {selectedSheets.length} sheet{selectedSheets.length !== 1 ? 's' : ''} selected: {selectedSheets.join(', ')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
