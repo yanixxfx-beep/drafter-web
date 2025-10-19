@@ -3568,49 +3568,6 @@ export function GeneratePage() {
     return { totalIdeas, totalSlides }
   }
 
-  // Export all drafts for a specific sheet
-  const exportSheetDraftsAsZIP = async (sheetName: string) => {
-    const ideasBySheet = getIdeasBySheet()
-    const sheetIdeas = ideasBySheet[sheetName] || []
-    
-    if (sheetIdeas.length === 0) {
-      alert(`No drafts found for sheet: ${sheetName}`)
-      return
-    }
-
-    setIsExporting(true)
-    try {
-      const JSZip = (await import('jszip')).default
-      const zip = new JSZip()
-      
-      let slideCount = 0
-      for (const idea of sheetIdeas) {
-        for (const slide of idea.slides) {
-          if (slide.thumbnail) {
-            // Convert dataURL to blob
-            const response = await fetch(slide.thumbnail)
-            const blob = await response.blob()
-            zip.file(`${idea.ideaId}-${slide.slideNumber}-${slide.id}.png`, blob)
-            slideCount++
-          }
-        }
-      }
-      
-      const blob = await zip.generateAsync({ type: 'blob' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `${step1Data?.spreadsheetName || 'spreadsheet'}_${sheetName.toLowerCase()}.zip`
-      link.click()
-      
-      console.log(`✅ Exported ${slideCount} slides for sheet: ${sheetName}`)
-    } catch (error) {
-      console.error('Failed to export sheet drafts:', error)
-      alert('Failed to export drafts. Please try again.')
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
   const renderStep3 = () => (
     <div className="space-y-6">
       <div className="text-center">
