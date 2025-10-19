@@ -2106,33 +2106,25 @@ export function GeneratePage() {
 
   // Randomize a single slide's image
   const randomizeSingleSlideImage = async (ideaIndex: number, slideIndex: number) => {
-    console.log('🔄 Starting randomizeSingleSlideImage...', { ideaIndex, slideIndex })
-    console.log('Available images:', availableImages.length)
-    
     if (availableImages.length === 0) {
-      console.error('❌ No images available to randomize')
       alert('No images available to randomize.')
       return
     }
 
     try {
-      console.log('📊 Getting idea and slide data...')
       const idea = generatedIdeas[ideaIndex]
       if (!idea) {
-        console.error('❌ Idea not found at index:', ideaIndex)
+        console.error('Idea not found at index:', ideaIndex)
         return
       }
       const slide = idea.slides[slideIndex]
       if (!slide) {
-        console.error('❌ Slide not found at index:', slideIndex)
+        console.error('Slide not found at index:', slideIndex)
         return
       }
-      console.log('✅ Found slide:', slide.id, 'Current image:', slide.image?.substring(0, 50))
 
       // Filter images by the slide's imageSource
-      console.log('🔍 Filtering images by source type...')
       const slideImageSource = slide.imageSource || 'affiliate'
-      console.log('Slide image source:', slideImageSource)
       
       let availableForSelection = availableImages.filter(img => {
         const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
@@ -2145,15 +2137,11 @@ export function GeneratePage() {
         }
       })
       
-      console.log(`Available ${slideImageSource} images:`, availableForSelection.length)
-      
       // Exclude already used images
       availableForSelection = availableForSelection.filter(img => !usedImages.has(img.id))
-      console.log('Available for selection (unused):', availableForSelection.length)
       
       // If all images of this type are used, reset the pool for this type
       if (availableForSelection.length === 0) {
-        console.log(`⚠️ All ${slideImageSource} images used, resetting pool...`)
         setUsedImages(new Set())
         availableForSelection = availableImages.filter(img => {
           const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
@@ -2169,10 +2157,8 @@ export function GeneratePage() {
 
       // Exclude the current image
       availableForSelection = availableForSelection.filter(img => img.url !== slide.image)
-      console.log('Available after excluding current:', availableForSelection.length)
       
       if (availableForSelection.length === 0) {
-        console.error('❌ No other images available')
         alert('No other images available.')
         return
       }
@@ -2180,13 +2166,10 @@ export function GeneratePage() {
       // Pick a random image
       const randomIndex = Math.floor(Math.random() * availableForSelection.length)
       const newImage = availableForSelection[randomIndex]
-      console.log('🎲 Selected new image:', newImage.name, 'ID:', newImage.id.substring(0, 20))
 
       // Regenerate the slide with the new image
-      console.log('🎨 Creating canvas...')
       const canvas = document.createElement('canvas')
       const format = slide.format || step2Data?.safeZoneFormat || '9:16'
-      console.log('📐 Format:', format)
       
       if (format === '3:4') {
         canvas.width = 1080
@@ -2195,83 +2178,56 @@ export function GeneratePage() {
         canvas.width = 1080
         canvas.height = 1920
       }
-
-      console.log('✅ Canvas created:', canvas.width, 'x', canvas.height)
       
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        console.error('❌ Failed to get canvas context')
+        console.error('Failed to get canvas context')
         return
       }
-      console.log('✅ Got canvas context')
 
       // Load and draw the new image
-      console.log('🖼️ Loading new image...')
       const img = new Image()
       
       // Create a fresh blob URL to avoid revoked URLs
       let imageUrl = newImage.url
-      console.log('📍 Original URL:', imageUrl.substring(0, 60))
       
       if (imageUrl.startsWith('blob:')) {
-        console.log('🔄 Blob URL detected, attempting to create fresh URL...')
         try {
           // Try to get the file from OPFS and create a fresh blob URL
           if (newImage.fileHandle) {
-            console.log('📁 File handle available, getting file...')
             const file = await newImage.fileHandle.getFile()
             imageUrl = URL.createObjectURL(file)
-            console.log('✅ Fresh blob URL created:', imageUrl.substring(0, 60))
-          } else {
-            console.warn('⚠️ No file handle available, using original URL')
           }
         } catch (error) {
-          console.warn('❌ Failed to create fresh blob URL, using original:', error)
+          console.warn('Failed to create fresh blob URL, using original:', error)
         }
-      } else {
-        console.log('ℹ️ Not a blob URL, using as-is')
       }
       
-      console.log('🎯 Setting img.src...')
       img.src = imageUrl
       
-      console.log('⏳ Waiting for image to load...')
       await new Promise((resolve) => {
-        img.onload = () => {
-          console.log('✅ Image loaded successfully:', img.width, 'x', img.height)
-          resolve(true)
-        }
+        img.onload = () => resolve(true)
         img.onerror = (e) => {
-          console.error('❌ Failed to load image:', imageUrl, 'Error:', e)
+          console.error('Failed to load image:', imageUrl, 'Error:', e)
           resolve(false) // Continue even if image fails to load
         }
       })
 
       // Paint solid background first (prevents transparency)
-      console.log('🎨 Painting background...')
       ctx.fillStyle = '#000000'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
-      console.log('✅ Background painted')
       
       // Draw image if loaded successfully
       if (img.complete && img.naturalWidth > 0) {
-        console.log('🎨 Drawing image with drawCover...')
         ctx.save()
         drawContain(ctx, img, canvas.width, canvas.height)
         ctx.restore()
-        console.log('✅ Image drawn successfully')
-      } else {
-        console.warn('⚠️ Image failed to load, background remains black')
       }
 
       // Apply text with existing settings
-      console.log('📝 Applying text overlay...')
       if (step2Data) {
-        console.log('✅ Step2 data available')
         const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
-        console.log('🔤 Font weight:', fontWeight, 'Font size:', step2Data.fontSize)
         
-        console.log('📐 Calculating text layout...')
         const layout = layoutDesktop(ctx, {
           text: slide.caption,
           fontFamily: 'TikTok Sans',
@@ -2289,9 +2245,7 @@ export function GeneratePage() {
           deskH: canvas.height,
           useSafeZone: false
         })
-        console.log('✅ Layout calculated:', layout.lines.length, 'lines')
 
-        console.log('✍️ Drawing text...')
         ctx.save()
         ctx.translate(layout.centerX, 0)
         ctx.rotate((step2Data.textRotation * Math.PI) / 180)
@@ -2299,7 +2253,6 @@ export function GeneratePage() {
         layout.lines.forEach((line, i) => {
           const x = 0
           const y = layout.baselines[i]
-          console.log(`  Line ${i}: "${line}" at (${x}, ${y})`)
 
           if (step2Data.outlinePx > 0) {
             ctx.strokeStyle = '#000000'
@@ -2314,18 +2267,12 @@ export function GeneratePage() {
         })
 
         ctx.restore()
-        console.log('✅ Text drawn successfully')
-      } else {
-        console.warn('⚠️ No step2Data available, skipping text')
       }
 
       // Generate thumbnail from canvas
-      console.log('📸 Generating thumbnail dataURL...')
       const thumbnailDataURL = canvas.toDataURL('image/png')
-      console.log('✅ Thumbnail generated:', thumbnailDataURL.substring(0, 50) + '...')
 
       // Update the slide IMMUTABLY
-      console.log('💾 Updating slide state immutably...')
       setGeneratedIdeas(prev =>
         prev.map((idea, iIdx) =>
           iIdx !== ideaIndex ? idea : {
@@ -2342,15 +2289,10 @@ export function GeneratePage() {
           }
         )
       )
-      console.log('✅ State update triggered (immutable)')
       
-      console.log('🏷️ Marking image as used...')
       setUsedImages(prev => new Set([...prev, newImage.id]))
-      
-      console.log('🎉 ✅ Successfully randomized image for slide!')
     } catch (error) {
-      console.error('❌ Failed to randomize slide image:', error)
-      console.error('Error details:', error)
+      console.error('Failed to randomize slide image:', error)
       alert('Failed to randomize image. Please try again.')
     }
   }

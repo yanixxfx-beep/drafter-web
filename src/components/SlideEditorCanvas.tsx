@@ -1,5 +1,5 @@
 // src/components/SlideEditorCanvas.tsx
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 import { useCanvasRender } from "@/hooks/useCanvasRender";
 
 type Props = {
@@ -13,8 +13,15 @@ type Props = {
 export default function SlideEditorCanvas({ src, bgColor = "#000000", className, drawOverlay, priority = 'low' }: Props) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   
-  // Debug logging
+  // Memoize render options for better performance
+  const renderOptions = useMemo(() => ({
+    src,
+    bgColor,
+    drawOverlay,
+    preferBitmap: true,
+    priority
+  }), [src, bgColor, drawOverlay, priority]);
   
-  useCanvasRender(ref.current, { src, bgColor, drawOverlay, preferBitmap: true, priority });
+  useCanvasRender(ref.current, renderOptions);
   return <canvas ref={ref} className={className} />;
 }
