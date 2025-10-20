@@ -1,199 +1,73 @@
+// src/components/generate/multi/Step2MultiSheet.tsx
 'use client'
 import React from 'react'
-import type { RunConfig, SheetConfig, SheetSelection, TextSettings, FormatSettings } from '@/types/sheets'
+import { type SheetSelection, type RunConfig } from '@/types/sheets'
 
-export default function Step2MultiSheet({
-  selection, value, onChange
-}: { selection: SheetSelection; value?: RunConfig; onChange: (v: RunConfig) => void }) {
-  const [mode, setMode] = React.useState<'all'|'perSheet'>(value?.applyMode ?? 'all')
+interface Step2MultiSheetProps {
+  sheetSelection: SheetSelection
+  onNext: (config: RunConfig) => void
+  onBack: () => void
+}
 
-  const [globalText, setGlobalText] = React.useState<TextSettings>({ 
-    font: 'TikTokSans_18pt_Regular', 
-    size: 56, 
-    lineHeight: 1.15, 
-    color: '#fff' 
-  })
-  const [globalFormat, setGlobalFormat] = React.useState<FormatSettings>({ 
-    width: 1080, 
-    height: 1920, 
-    templateId: undefined, 
-    watermark: false 
-  })
-
-  const [perSheet, setPerSheet] = React.useState<Record<string, SheetConfig>>({})
-
-  React.useEffect(() => {
-    const cfg: RunConfig = mode === 'all'
-      ? { 
-          applyMode: 'all', 
-          sheets: selection.sheets.map(s => ({ 
-            sheetId: s.id, 
-            sheetName: s.name, 
-            text: globalText, 
-            format: globalFormat 
-          })) 
-        }
-      : { 
-          applyMode: 'perSheet', 
-          sheets: selection.sheets.map(s => 
-            perSheet[s.id] ?? { 
-              sheetId: s.id, 
-              sheetName: s.name, 
-              text: globalText, 
-              format: globalFormat 
-            }
-          ) 
-        }
-    onChange(cfg)
-  }, [mode, globalText, globalFormat, perSheet, selection, onChange])
+export default function Step2MultiSheet({ sheetSelection, onNext, onBack }: Step2MultiSheetProps) {
+  const handleNext = () => {
+    const config: RunConfig = {
+      sheetSelections: [sheetSelection],
+      globalSettings: {
+        // Add global settings here
+      },
+      perSheetSettings: {}
+    }
+    onNext(config)
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        <button 
-          className={`px-4 py-2 rounded-lg border transition-all ${
-            mode === 'all' 
-              ? 'bg-blue-600 text-white border-blue-600' 
-              : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-          }`} 
-          onClick={() => setMode('all')}
-        >
-          Apply once to all
-        </button>
-        <button 
-          className={`px-4 py-2 rounded-lg border transition-all ${
-            mode === 'perSheet' 
-              ? 'bg-blue-600 text-white border-blue-600' 
-              : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-          }`} 
-          onClick={() => setMode('perSheet')}
-        >
-          Customize per sheet
-        </button>
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2">Step 2: Multi-Sheet Settings</h2>
+        <p className="text-gray-600">Configure settings for your selected sheets</p>
+      </div>
+      
+      <div className="space-y-4">
+        <div className="p-4 bg-gray-50 rounded">
+          <h3 className="font-semibold mb-2">Selected Sheets:</h3>
+          <p className="text-sm text-gray-600 mb-2">
+            Spreadsheet: {sheetSelection.spreadsheetName}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {sheetSelection.selectedSheets.map(sheetName => (
+              <span key={sheetName} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                {sheetName}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Settings Mode</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="settingsMode" value="global" defaultChecked />
+                <span>Apply same settings to all sheets</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="settingsMode" value="per-sheet" />
+                <span>Configure settings per sheet</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {mode === 'all' ? (
-        <div className="grid grid-cols-2 gap-4">
-          <TextSettingsForm value={globalText} onChange={setGlobalText} />
-          <FormatSettingsForm value={globalFormat} onChange={setGlobalFormat} />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {selection.sheets.map(s => (
-            <details key={s.id} className="border rounded-lg p-3">
-              <summary className="cursor-pointer font-medium">{s.name}</summary>
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <TextSettingsForm 
-                  value={perSheet[s.id]?.text ?? globalText} 
-                  onChange={(v) => setPerSheet(ps => ({
-                    ...ps, 
-                    [s.id]: {
-                      ...(ps[s.id] ?? { sheetId: s.id, sheetName: s.name, text: v, format: globalFormat }), 
-                      text: v 
-                    }
-                  }))} 
-                />
-                <FormatSettingsForm 
-                  value={perSheet[s.id]?.format ?? globalFormat} 
-                  onChange={(v) => setPerSheet(ps => ({
-                    ...ps, 
-                    [s.id]: {
-                      ...(ps[s.id] ?? { sheetId: s.id, sheetName: s.name, text: globalText, format: v }), 
-                      format: v 
-                    }
-                  }))} 
-                />
-              </div>
-            </details>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TextSettingsForm({ value, onChange }: { value: TextSettings; onChange: (v: TextSettings) => void }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h4 className="font-medium">Text Settings</h4>
-      <label className="flex flex-col gap-1">
-        Font
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          value={value.font} 
-          onChange={e => onChange({...value, font: e.target.value})}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Size
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          type="number" 
-          value={value.size} 
-          onChange={e => onChange({...value, size: +e.target.value})}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Line height
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          type="number" 
-          step="0.05" 
-          value={value.lineHeight} 
-          onChange={e => onChange({...value, lineHeight: +e.target.value})}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Color
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          value={value.color} 
-          onChange={e => onChange({...value, color: e.target.value})}
-        />
-      </label>
-    </div>
-  )
-}
-
-function FormatSettingsForm({ value, onChange }: { value: FormatSettings; onChange: (v: FormatSettings) => void }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h4 className="font-medium">Format Settings</h4>
-      <label className="flex flex-col gap-1">
-        Width
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          type="number" 
-          value={value.width} 
-          onChange={e => onChange({...value, width: +e.target.value})}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Height
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          type="number" 
-          value={value.height} 
-          onChange={e => onChange({...value, height: +e.target.value})}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Template ID
-        <input 
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          value={value.templateId ?? ''} 
-          onChange={e => onChange({...value, templateId: e.target.value || undefined})}
-        />
-      </label>
-      <label className="inline-flex items-center gap-2">
-        <input 
-          type="checkbox" 
-          checked={!!value.watermark} 
-          onChange={e => onChange({...value, watermark: e.target.checked})}
-          className="rounded"
-        />
-        Watermark
-      </label>
+      <div className="flex gap-4">
+        <button onClick={onBack} className="btn btn-secondary">
+          Back
+        </button>
+        <button onClick={handleNext} className="btn btn-primary">
+          Generate Drafts
+        </button>
+      </div>
     </div>
   )
 }

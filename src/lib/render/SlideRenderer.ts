@@ -1,121 +1,121 @@
-import type { Slide, TextLayer } from '@/types/slide'
+// src/lib/render/SlideRenderer.ts
+export interface Slide {
+  id: string
+  image: string
+  text: string
+  exportSize: { w: number; h: number }
+  thumbUrl?: string
+  _rev?: number
+}
 
-export type RenderOpts = {
+export interface RenderOptions {
   slide: Slide
-  scale: number // 1 = export, <1 = thumbnail
+  scale: number
   dpr?: number
 }
 
-export async function renderSlideToCanvas({ slide, scale, dpr }: RenderOpts): Promise<HTMLCanvasElement> {
-  const { w: baseW, h: baseH } = slide.exportSize
-  const cssW = Math.max(1, Math.round(baseW * scale))
-  const cssH = Math.max(1, Math.round(baseH * scale))
-  const _dpr = dpr ?? (globalThis.devicePixelRatio || 1)
-
+export async function renderSlideToCanvas({ slide, scale, dpr = 1 }: RenderOptions): Promise<HTMLCanvasElement> {
+  // Wait for fonts to be ready
+  await document.fonts.ready
+  
   const canvas = document.createElement('canvas')
-  canvas.width = Math.round(cssW * _dpr)
-  canvas.height = Math.round(cssH * _dpr)
-  canvas.style.width = cssW + 'px'
-  canvas.style.height = cssH + 'px'
-
-  const ctx = canvas.getContext('2d', { alpha: true })!
-  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0)
+  const ctx = canvas.getContext('2d')!
+  
+  // Set canvas size
+  canvas.width = slide.exportSize.w * scale * dpr
+  canvas.height = slide.exportSize.h * scale * dpr
+  
+  // Set transform for high DPI
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  
+  // Enable image smoothing
   ctx.imageSmoothingEnabled = true
-  // @ts-ignore
-  if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high'
-  ctx.textBaseline = 'alphabetic'
-
-  // Ensure fonts are ready
-  if ((document as any).fonts?.ready) { 
-    try { await (document as any).fonts.ready } catch {} 
+  ctx.imageSmoothingQuality = 'high'
+  
+  // Draw background
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, slide.exportSize.w * scale, slide.exportSize.h * scale)
+  
+  // Draw image if available
+  if (slide.image) {
+    try {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = reject
+        img.src = slide.image
+      })
+      
+      // Draw image to cover the canvas
+      const imgAspect = img.width / img.height
+      const canvasAspect = (slide.exportSize.w * scale) / (slide.exportSize.h * scale)
+      
+      let drawWidth = slide.exportSize.w * scale
+      let drawHeight = slide.exportSize.h * scale
+      let drawX = 0
+      let drawY = 0
+      
+      if (imgAspect > canvasAspect) {
+        // Image is wider, fit height
+        drawWidth = drawHeight * imgAspect
+        drawX = (slide.exportSize.w * scale - drawWidth) / 2
+      } else {
+        // Image is taller, fit width
+        drawHeight = drawWidth / imgAspect
+        drawY = (slide.exportSize.h * scale - drawHeight) / 2
+      }
+      
+      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+    } catch (error) {
+      console.warn('Failed to load image:', error)
+    }
   }
-
-  // === DRAW PIPELINE ===
-  // 1) Background & image
-  await drawBackground(ctx, cssW, cssH)
-  if (slide.imageRef) await drawImage(ctx, slide.imageRef, cssW, cssH, slide)
-
-  // 2) Text layers (scale positions & sizes)
-  for (const layer of slide.textLayers) {
-    await drawTextLayer(ctx, layer, scale)
-  }
-
-  // 3) Watermark
-  if (slide.watermark) await drawWatermark(ctx, slide.watermark, cssW, cssH, scale)
-
-  return canvas
-}
-
-// ----- helpers -----
-async function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  ctx.save()
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, w, h)
-  ctx.restore()
-}
-
-async function drawImage(ctx: CanvasRenderingContext2D, imageRef: Slide['imageRef'], w: number, h: number, slide: Slide) {
-  try {
-    ctx.save()
+  
+  // Draw text if available
+  if (slide.text) {
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = `${16 * scale}px Arial`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
     
-    // Apply background transformations
-    if (slide.rotateBg180 || slide.flipH) {
-      ctx.translate(w / 2, h / 2)
-      if (slide.rotateBg180) ctx.rotate(Math.PI)
-      if (slide.flipH) ctx.scale(-1, 1)
-      ctx.translate(-w / 2, -h / 2)
+    const textX = (slide.exportSize.w * scale) / 2
+    const textY = (slide.exportSize.h * scale) / 2
+    
+    // Simple text wrapping
+    const words = slide.text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+    
+    for (const word of words) {
+      const testLine = currentLine + (currentLine ? ' ' : '') + word
+      const metrics = ctx.measureText(testLine)
+      
+      if (metrics.width > slide.exportSize.w * scale * 0.8) {
+        if (currentLine) {
+          lines.push(currentLine)
+          currentLine = word
+        } else {
+          lines.push(word)
+        }
+      } else {
+        currentLine = testLine
+      }
     }
     
-    // For now, draw a placeholder - in real implementation, this would load the actual image
-    // from the imageRef (localId, bucket, key, etc.)
-    ctx.fillStyle = '#333'
-    ctx.fillRect(0, 0, w, h)
+    if (currentLine) {
+      lines.push(currentLine)
+    }
     
-    // TODO: Implement actual image loading from imageRef
-    // This would involve:
-    // 1. Loading the image from local storage or cloud storage
-    // 2. Drawing it with proper scaling (contain/cover)
-    // 3. Handling different image formats and orientations
+    // Draw lines
+    const lineHeight = 20 * scale
+    const startY = textY - ((lines.length - 1) * lineHeight) / 2
     
-    ctx.restore()
-  } catch (error) {
-    console.error('Error drawing image:', error)
+    lines.forEach((line, index) => {
+      ctx.fillText(line, textX, startY + index * lineHeight)
+    })
   }
-}
-
-async function drawTextLayer(ctx: CanvasRenderingContext2D, layer: TextLayer, scale: number) {
-  const snap = (ctx as any)._snap || ((v: number) => v)
-  const fontSize = layer.size * scale
-  ctx.save()
-  ctx.font = `${fontSize}px ${layer.font}`
-  ctx.fillStyle = layer.color
-  ctx.textAlign = layer.align
-  if (layer.stroke) { 
-    ctx.lineWidth = (layer.stroke.width || 1) * scale
-    ctx.strokeStyle = layer.stroke.color 
-  }
-
-  // Draw text with stroke if needed
-  const x = snap(layer.x * scale)
-  const y = snap(layer.y * scale)
-  if (layer.stroke) ctx.strokeText(layer.text, x, y)
-  ctx.fillText(layer.text, x, y)
-  ctx.restore()
-}
-
-async function drawWatermark(ctx: CanvasRenderingContext2D, wm: Slide['watermark'], w: number, h: number, scale: number) {
-  if (!wm?.text) return
   
-  ctx.save()
-  ctx.font = `${(wm.size || 24) * scale}px Arial`
-  ctx.fillStyle = wm.color || '#FFFFFF'
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'bottom'
-  
-  const padding = (wm.padding || 20) * scale
-  const x = w - padding
-  const y = h - padding
-  
-  ctx.fillText(wm.text, x, y)
-  ctx.restore()
+  return canvas
 }

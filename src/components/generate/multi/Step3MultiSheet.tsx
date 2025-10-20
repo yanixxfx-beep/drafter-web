@@ -1,107 +1,86 @@
+// src/components/generate/multi/Step3MultiSheet.tsx
 'use client'
-import React from 'react'
-import type { RunConfig } from '@/types/sheets'
-import type { Slide } from '@/types/slide'
-import { enqueueThumb } from '@/lib/images/thumbnail'
-import { renderSlideToCanvas } from '@/lib/render/SlideRenderer'
+import React, { useState } from 'react'
+import { type RunConfig } from '@/types/sheets'
 
-export default function Step3MultiSheet({ 
-  run, 
-  slidesBySheet, 
-  onReroll, 
-  onEdit 
-}: {
-  run: RunConfig
-  slidesBySheet: Record<string, Slide[]>
-  onReroll: (sheetId: string, slideId: string) => void
-  onEdit: (sheetId: string, slideId: string) => void
-}) {
-  React.useEffect(() => {
-    // pre-render thumbs for all slides
-    Object.values(slidesBySheet).flat().forEach(s => enqueueThumb(s))
-  }, [slidesBySheet])
+interface Step3MultiSheetProps {
+  runConfig: RunConfig
+  onBack: () => void
+}
 
-  const exportSheet = async (sheetId: string, filename: string) => {
-    const JSZip = (await import('jszip')).default
-    const zip = new JSZip()
-    for (const s of (slidesBySheet[sheetId] || [])) {
-      const canvas = await renderSlideToCanvas({ slide: s, scale: 1 })
-      const blob: Blob = await new Promise(res => canvas.toBlob(b => res(b!), 'image/png', 1))
-      zip.file(`${s.id}.png`, blob)
+export default function Step3MultiSheet({ runConfig, onBack }: Step3MultiSheetProps) {
+  const [generatedDrafts, setGeneratedDrafts] = useState<any[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
+
+  const handleGenerate = async () => {
+    setIsGenerating(true)
+    try {
+      // TODO: Implement actual draft generation
+      console.log('Generating drafts for config:', runConfig)
+      // Simulate generation
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      setGeneratedDrafts([
+        { id: 1, sheetName: 'Monday', ideas: 5, slides: 25 },
+        { id: 2, sheetName: 'Tuesday', ideas: 3, slides: 15 },
+      ])
+    } catch (error) {
+      console.error('Failed to generate drafts:', error)
+    } finally {
+      setIsGenerating(false)
     }
-    const blob = await zip.generateAsync({ type: 'blob' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `${filename}.zip`
-    a.click()
+  }
+
+  const handleExportSheet = (sheetName: string) => {
+    console.log(`Exporting drafts for sheet: ${sheetName}`)
+    // TODO: Implement individual sheet export
   }
 
   return (
-    <div className="flex gap-4">
-      <aside className="w-64 border-r pr-4">
-        <h4 className="font-semibold mb-2">Sheets</h4>
-        <ul className="space-y-1">
-          {run.sheets.map(s => (
-            <li key={s.sheetId}>
-              <button 
-                className="w-full px-3 py-2 text-left rounded-lg hover:bg-gray-100 flex justify-between items-center" 
-                onClick={() => document.getElementById(`sheet-${s.sheetId}`)?.scrollIntoView({behavior: 'smooth'})}
-              >
-                <span className="text-sm">{s.sheetName}</span>
-                <span className="opacity-60">→</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      <main className="flex-1 space-y-8">
-        {run.sheets.map(s => (
-          <section key={s.sheetId} id={`sheet-${s.sheetId}`} className="scroll-mt-8">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-semibold">{s.sheetName}</h3>
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" 
-                onClick={() => exportSheet(s.sheetId, s.sheetName)}
-              >
-                Export {s.sheetName}
-              </button>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              {(slidesBySheet[s.sheetId] || []).map(slide => (
-                <div key={slide.id} className="relative group">
-                  <div className="aspect-[9/16] bg-gray-100 rounded-lg overflow-hidden">
-                    {slide.thumbUrl ? (
-                      <img 
-                        src={slide.thumbUrl} 
-                        alt={slide.caption || 'Slide'} 
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-500">
-                        Loading...
-                      </div>
-                    )}
-                  </div>
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                    <button 
-                      className="px-2 py-1 bg-white text-black rounded text-xs hover:bg-gray-100"
-                      onClick={() => onReroll(s.sheetId, slide.id)}
-                    >
-                      Reroll
-                    </button>
-                    <button 
-                      className="px-2 py-1 bg-white text-black rounded text-xs hover:bg-gray-100"
-                      onClick={() => onEdit(s.sheetId, slide.id)}
-                    >
-                      Edit
-                    </button>
-                  </div>
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2">Step 3: Multi-Sheet Review & Export</h2>
+        <p className="text-gray-600">Review and export your generated drafts by sheet</p>
+      </div>
+      
+      {generatedDrafts.length === 0 ? (
+        <div className="text-center">
+          <button 
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            className="btn btn-primary"
+          >
+            {isGenerating ? 'Generating...' : 'Generate Drafts'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-4">
+            {generatedDrafts.map(draft => (
+              <div key={draft.id} className="p-4 border rounded">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold">{draft.sheetName}</h3>
+                  <button 
+                    onClick={() => handleExportSheet(draft.sheetName)}
+                    className="btn btn-sm btn-primary"
+                  >
+                    Export {draft.sheetName}
+                  </button>
                 </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </main>
+                <div className="text-sm text-gray-600">
+                  {draft.ideas} ideas • {draft.slides} slides
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Export will be named: {runConfig.sheetSelections[0]?.spreadsheetName}_{draft.sheetName.toLowerCase()}.zip
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button onClick={onBack} className="btn btn-secondary">
+        Back to Settings
+      </button>
     </div>
   )
 }

@@ -91,16 +91,14 @@ export function EnhancedSidebar({ currentPage, onPageChange }: EnhancedSidebarPr
           <Logo open={open} />
           <div className="mt-8 flex flex-col gap-2">
             {links.map((link, idx) => (
-              <button
+              <SidebarLink
                 key={idx}
+                link={link}
                 onClick={(e) => {
                   e.preventDefault()
                   onPageChange(link.label.toLowerCase())
                 }}
-                className="w-full text-left"
-              >
-                <SidebarLink link={link} />
-              </button>
+              />
             ))}
           </div>
         </div>
@@ -158,51 +156,43 @@ const AccountBlock = ({ onOpenProfile }: AccountBlockProps) => {
 
   if (!isAuthed) {
     return (
-      <button
+      <SidebarLink
+        link={{
+          label: 'Sign up / Log in',
+          href: '#',
+          icon: (
+            <img
+              src="/assets/logo/logo_drafter_transparent.png"
+              className="h-7 w-7 shrink-0 rounded-full object-contain"
+              alt="Avatar"
+            />
+          ),
+        }}
         onClick={(e: React.MouseEvent) => {
           e.preventDefault()
           onOpenProfile()
         }}
-        className="w-full text-left"
-      >
-        <SidebarLink
-          link={{
-            label: 'Sign up / Log in',
-            href: '#',
-            icon: (
-              <img
-                src="/assets/logo/logo_drafter_transparent.png"
-                className="h-7 w-7 shrink-0 rounded-full object-contain"
-                alt="Avatar"
-              />
-            ),
-          }}
-        />
-      </button>
+      />
     )
   }
 
   return (
-    <button
+    <SidebarLink
+      link={{
+        label: name || 'My account',
+        href: '#',
+        icon: (
+          <img
+            src={avatar || '/assets/logo/logo_drafter_transparent.png'}
+            className="h-7 w-7 shrink-0 rounded-full object-cover"
+            alt={name || 'Avatar'}
+          />
+        ),
+      }}
       onClick={(e: React.MouseEvent) => {
         e.preventDefault()
         onOpenProfile()
       }}
-      className="w-full text-left"
-    >
-      <SidebarLink
-        link={{
-          label: name || 'My account',
-          href: '#',
-          icon: (
-            <img
-              src={avatar || '/assets/logo/logo_drafter_transparent.png'}
-              className="h-7 w-7 shrink-0 rounded-full object-cover"
-              alt={name || 'Avatar'}
-            />
-          ),
-        }}
-      />
-    </button>
+    />
   )
 }
