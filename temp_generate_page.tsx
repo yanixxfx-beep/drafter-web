@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/Icon'
 import { CloseProjectModal } from '@/components/ui/CloseProjectModal'
 import { SlideEditor } from '@/components/pages/SlideEditor'
+import MultiSheetFlow from '@/components/generate/multi/MultiSheetFlow'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -167,7 +168,7 @@ interface Step3Data {
   }>
 }
 
-export default function SingleSheetFlow() {
+export function GeneratePage() {
   const { colors } = useTheme()
   const { data: session, status } = useSession()
   const { store: sessionStore, ready } = usePersistentSession()
