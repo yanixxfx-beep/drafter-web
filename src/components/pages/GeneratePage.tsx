@@ -34,6 +34,10 @@ import {
 } from '@/components/ui/Icon'
 import { CloseProjectModal } from '@/components/ui/CloseProjectModal'
 import { SlideEditor } from '@/components/pages/SlideEditor'
+import { groupSlidesBySheetAndDay } from '@/lib/grouping/groupSlides'
+import { defaultDayResolver } from '@/lib/grouping/dayResolvers'
+import { exportCombinedZip, exportPerSheetZips, exportScope } from '@/lib/export/zipper'
+import type { SlidesBySheet, GroupsBySheet } from '@/types/sheets'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -261,6 +265,11 @@ export function GeneratePage() {
   // Slide editor
   const [showSlideEditor, setShowSlideEditor] = useState(false)
   const [editingSlide, setEditingSlide] = useState<{ideaIndex: number, slideIndex: number} | null>(null)
+
+  // Grouped display states
+  const [isGroupedBySheet, setIsGroupedBySheet] = useState(true)
+  const [expandedSheets, setExpandedSheets] = useState<Record<string, boolean>>({})
+  const [selectedSlides, setSelectedSlides] = useState<Record<string, boolean>>({})
 
   // Load saved data and images on mount
   useEffect(() => {
@@ -926,6 +935,59 @@ export function GeneratePage() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  // Toggle sheet expansion
+  const toggleSheetExpansion = (sheetName: string) => {
+    setExpandedSheets(prev => ({
+      ...prev,
+      [sheetName]: !prev[sheetName]
+    }))
+  }
+
+  // Get sheet summary
+  const getSheetSummary = (sheetIdeas: typeof generatedIdeas) => {
+    const totalIdeas = sheetIdeas.length
+    const totalSlides = sheetIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)
+    return { totalIdeas, totalSlides }
+  }
+
+  // Toggle slide selection
+  const toggleSlideSelection = (slideId: string) => {
+    setSelectedSlides(prev => ({
+      ...prev,
+      [slideId]: !prev[slideId]
+    }))
+  }
+
+  // Convert generatedIdeas to SlidesBySheet format
+  const getSlidesBySheet = (): SlidesBySheet => {
+    const slidesBySheet: SlidesBySheet = {}
+    
+    generatedIdeas.forEach(idea => {
+      const sheetName = idea.sourceSheet
+      if (!slidesBySheet[sheetName]) {
+        slidesBySheet[sheetName] = []
+      }
+      
+      idea.slides.forEach(slide => {
+        slidesBySheet[sheetName].push({
+          ...slide,
+          sourceSheet: sheetName
+        })
+      })
+    })
+    
+    return slidesBySheet
+  }
+
+  // Get grouped slides
+  const getGroupedSlides = (): GroupsBySheet => {
+    const slidesBySheet = getSlidesBySheet()
+    return groupSlidesBySheetAndDay(slidesBySheet, {
+      getSheetName: (sheetId) => sheetId,
+      resolveDay: defaultDayResolver
+    })
   }
 
   const canProceedToStep = (step: number) => {
