@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { useTheme } from '@/context/ThemeContext'
 import { useGenerateStore } from '@/store/generateStore'
+import StepHeader from '@/components/generate/common/StepHeader'
 
 export default function SingleSheetFlow() {
   const { colors } = useTheme()
@@ -32,40 +33,10 @@ export default function SingleSheetFlow() {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: colors.text }}>
-          Single Sheet Flow
-        </h1>
-        <p className="text-gray-600" style={{ color: colors.textMuted }}>
-          Original single-sheet functionality will be moved here
-        </p>
-      </div>
-
-      {/* Step indicator */}
-      <div className="flex justify-center mb-8">
-        <div className="flex items-center space-x-4">
-          {[1, 2, 3].map((stepNum) => (
-            <div key={stepNum} className="flex items-center">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step >= stepNum
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                {stepNum}
-              </div>
-              {stepNum < 3 && (
-                <div
-                  className={`w-8 h-0.5 mx-2 ${
-                    step > stepNum ? 'bg-blue-500' : 'bg-gray-200'
-                  }`}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      <StepHeader
+        title="Single Sheet Flow"
+        description="Original single-sheet functionality will be moved here"
+      />
 
       {/* Step content placeholder */}
       <div className="bg-white rounded-lg shadow p-6" style={{ backgroundColor: colors.surface }}>

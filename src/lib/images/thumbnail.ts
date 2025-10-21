@@ -1,5 +1,6 @@
 // src/lib/images/thumbnail.ts
-import { renderSlideToCanvas, type Slide } from '@/lib/render/SlideRenderer'
+import { renderSlideToCanvas } from '@/lib/render/SlideRenderer'
+import type { Slide } from '@/types/slide'
 
 const MAX_CONCURRENCY = 3
 let inFlight = 0

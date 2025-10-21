@@ -1,7 +1,8 @@
 // src/components/generate/common/SlideEditorCanvas.tsx
 'use client'
 import React, { useRef, useEffect } from 'react'
-import { renderSlideToCanvas, type Slide } from '@/lib/render/SlideRenderer'
+import { renderSlideToCanvas } from '@/lib/render/SlideRenderer'
+import type { Slide } from '@/types/slide'
 
 interface SlideEditorCanvasProps {
   slide: Slide
