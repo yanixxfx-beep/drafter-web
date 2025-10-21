@@ -113,6 +113,7 @@ export default function SingleSheetFlow() {
   const [generatedIdeas, setGeneratedIdeas] = useState<any[]>([])
   const [step1Data, setStep1Data] = useState<any>(null)
   const [step2Data, setStep2Data] = useState<any>(null)
+  const [step3Data, setStep3Data] = useState<any>(null)
   const [selectedSheets, setSelectedSheets] = useState<string[]>([])
   
   // Google Sheets states
@@ -139,15 +140,39 @@ export default function SingleSheetFlow() {
   }, [])
 
   const loadSessions = async () => {
-    // Load sessions logic here
+    try {
+      const stored = localStorage.getItem('drafter_sessions')
+      const sessions = stored ? JSON.parse(stored) : []
+      setSessions(sessions)
+    } catch (error) {
+      console.error('Failed to load sessions:', error)
+      setSessions([])
+    }
   }
 
   const createSession = async (name: string) => {
-    // Create session logic here
+    const newSession = {
+      id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      createdAt: new Date()
+    }
+    
+    const updatedSessions = [...sessions, newSession]
+    setSessions(updatedSessions)
+    localStorage.setItem('drafter_sessions', JSON.stringify(updatedSessions))
+    
+    setCurrentSession(newSession)
+    setShowSessionForm(false)
+    setCurrentStep(1)
   }
 
   const loadSession = (session: any) => {
-    // Load session logic here
+    setCurrentSession(session)
+    if (session.step1Data) setStep1Data(session.step1Data)
+    if (session.step2Data) setStep2Data(session.step2Data)
+    if (session.step3Data) setStep3Data(session.step3Data)
+    setShowSessionForm(false)
+    setCurrentStep(1)
   }
 
   const loadSpreadsheets = async () => {
