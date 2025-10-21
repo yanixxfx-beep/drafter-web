@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from 'next-auth/react'
 import { useTheme } from '@/context/ThemeContext'
 import { useGenerateStore } from '@/store/generateStore'
 import StepHeader from '@/components/generate/common/StepHeader'
+import MultiSheetFlow from '@/components/generate/multi/MultiSheetFlow'
 
 export default function SingleSheetFlow() {
   const { colors } = useTheme()
@@ -31,22 +32,6 @@ export default function SingleSheetFlow() {
     )
   }
 
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      <StepHeader
-        title="Single Sheet Flow"
-        description="Original single-sheet functionality will be moved here"
-      />
-
-      {/* Step content placeholder */}
-      <div className="bg-white rounded-lg shadow p-6" style={{ backgroundColor: colors.surface }}>
-        <h2 className="text-xl font-semibold mb-4" style={{ color: colors.text }}>
-          Step {step}: Single Sheet Content
-        </h2>
-        <p style={{ color: colors.textMuted }}>
-          This will contain the original single-sheet logic extracted from GeneratePage.tsx
-        </p>
-      </div>
-    </div>
-  )
+  // Use the MultiSheetFlow which includes all the functionality
+  return <MultiSheetFlow />
 }
