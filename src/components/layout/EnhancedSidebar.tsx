@@ -91,8 +91,8 @@ export function EnhancedSidebar({ currentPage, onPageChange }: EnhancedSidebarPr
           <Logo open={open} />
           <div className="mt-8 flex flex-col gap-2">
             {links.map((link, idx) => (
-              <SidebarLink 
-                key={idx} 
+              <SidebarLink
+                key={idx}
                 link={link}
                 onClick={(e) => {
                   e.preventDefault()

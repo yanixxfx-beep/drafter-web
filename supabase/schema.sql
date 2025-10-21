@@ -32,3 +32,4 @@ create table if not exists quotas (
 create index if not exists idx_media_workspace on media_files(workspace_id);
 create index if not exists idx_media_owner on media_files(owner_id);
 create index if not exists idx_media_created on media_files(created_at desc);
+
