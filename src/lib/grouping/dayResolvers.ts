@@ -1,34 +1,37 @@
 // src/lib/grouping/dayResolvers.ts
 import type { DayResolver } from '@/types/sheets'
+import type { Slide } from '@/types/slide'
 
-// 1) From a custom field you already carry on Slide (preferred)
-export const bySlideMetaDate: DayResolver = (slide) => {
-  return (slide as any).meta?.day ?? 'Unassigned'
+// Preferred: we already store slide.meta.day during generation
+export const bySlideMeta: DayResolver = (s) => s.meta?.day ?? 'Unassigned'
+
+// Fallback: parse day/date from first text layer like "2025-10-21 - My idea" or "Mon: Title"
+export const byTitlePrefix: DayResolver = (s) => {
+  const t = s.textLayers?.[0]?.text || ''
+  const m = /^\s*(\d{4}-\d{2}-\d{2}|Mon|Tue|Wed|Thu|Fri|Sat|Sun|Day\s+\d+)\b/.exec(t)
+  return m?.[1] ?? 'Unassigned'
 }
 
-// 2) From title text pattern "[Mon] ..." or "2025-10-17 ..."
-export const byTitlePrefix: DayResolver = (slide) => {
-  const text = slide.textLayers?.[0]?.text || ''
-  const match = /^\s*(\d{4}-\d{2}-\d{2}|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/.exec(text)
-  return match?.[1] ?? 'Unassigned'
+// Fallback: stable bucket by index order when source has no day info
+export const byIndexBucket = (bucketSize=5): DayResolver => {
+  let i = 0
+  const map = new WeakMap<object, number>()
+  return (s) => {
+    if (!map.has(s)) map.set(s, ++i)
+    const n = map.get(s)!
+    return `Batch ${Math.ceil(n / bucketSize)}`
+  }
 }
 
-// 3) From sourceSheet field (fallback)
-export const bySourceSheet: DayResolver = (slide) => {
-  return (slide as any).sourceSheet ?? 'Unassigned'
-}
-
-// 4) Default resolver that tries multiple methods
-export const defaultDayResolver: DayResolver = (slide) => {
+// Default resolver that tries multiple strategies
+export const defaultDayResolver: DayResolver = (s) => {
   // Try meta first
-  const metaDay = (slide as any).meta?.day
-  if (metaDay) return metaDay
+  if (s.meta?.day) return s.meta.day
   
   // Try title prefix
-  const text = slide.textLayers?.[0]?.text || ''
-  const titleMatch = /^\s*(\d{4}-\d{2}-\d{2}|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/.exec(text)
-  if (titleMatch?.[1]) return titleMatch[1]
+  const titleDay = byTitlePrefix(s)
+  if (titleDay !== 'Unassigned') return titleDay
   
-  // Fall back to sourceSheet
-  return (slide as any).sourceSheet ?? 'Unassigned'
+  // Fallback to batch
+  return byIndexBucket(5)(s)
 }

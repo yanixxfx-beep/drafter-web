@@ -20,8 +20,8 @@ export interface RunConfig {
   perSheetSettings?: Record<string, any>
 }
 
-// New grouping types for Step 3 grouped display
-export type DayKey = string // e.g. '2025-10-17' or 'Mon'
+// ChatGPT's improved grouping types
+export type DayKey = string // e.g. '2025-10-21' or 'Mon' or 'Day 1'
 export type SheetKey = string // sheetId
 
 export type SlideGroup = {
@@ -32,5 +32,4 @@ export type SlideGroup = {
 
 export type SlidesBySheet = Record<SheetKey, Slide[]>
 export type GroupsBySheet = Record<SheetKey, SlideGroup>
-
 export type DayResolver = (slide: Slide) => DayKey

@@ -23,6 +23,8 @@ export type TextLayer = {
   stroke?: { color: string; width: number }
 }
 
+export type SlideMeta = { day?: string; [k: string]: any }
+
 export type Slide = {
   id: string
   seed: string
@@ -51,4 +53,6 @@ export type Slide = {
   flipH?: boolean
   // Caption for editor
   caption?: string
+  // Meta data for grouping
+  meta?: SlideMeta
 }

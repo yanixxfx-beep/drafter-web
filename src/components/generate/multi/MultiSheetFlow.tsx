@@ -32,12 +32,27 @@ export default function MultiSheetFlow() {
           // Mock slides - replace with actual generation logic
           {
             id: `${sheetName}-slide-1`,
-            image: '/assets/logo/logo_drafter_transparent.png',
-            caption: `Mock slide 1 for ${sheetName}`,
-            format: '9:16' as const,
+            seed: `${sheetName}-1`,
+            _rev: 0,
+            updatedAt: Date.now(),
+            exportSize: { w: 1080, h: 1920 },
+            imageRef: { kind: 'local', localId: 'mock' },
+            textLayers: [{ 
+              id: '1',
+              kind: 'title' as const,
+              text: `Mock slide 1 for ${sheetName}`,
+              x: 540,
+              y: 960,
+              w: 1000,
+              h: 200,
+              align: 'center' as CanvasTextAlign,
+              font: 'Arial',
+              size: 48,
+              lineHeight: 1.2,
+              color: '#FFFFFF'
+            }],
             thumbUrl: '/assets/logo/logo_drafter_transparent.png',
-            textLayers: [{ text: `Mock slide 1 for ${sheetName}` }],
-            sourceSheet: sheetName
+            meta: { day: 'Monday' }
           } as Slide
         ]
       })

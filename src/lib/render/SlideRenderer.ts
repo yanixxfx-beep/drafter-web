@@ -1,12 +1,5 @@
 // src/lib/render/SlideRenderer.ts
-export interface Slide {
-  id: string
-  image: string
-  text: string
-  exportSize: { w: number; h: number }
-  thumbUrl?: string
-  _rev?: number
-}
+import type { Slide } from '@/types/slide'
 
 export interface RenderOptions {
   slide: Slide
@@ -37,15 +30,20 @@ export async function renderSlideToCanvas({ slide, scale, dpr = 1 }: RenderOptio
   ctx.fillRect(0, 0, slide.exportSize.w * scale, slide.exportSize.h * scale)
   
   // Draw image if available
-  if (slide.image) {
+  if (slide.imageRef) {
     try {
+      // For now, we'll use a placeholder since we need to handle different image sources
+      // In a real implementation, you'd load the image based on imageRef
       const img = new Image()
       img.crossOrigin = 'anonymous'
+      
+      // Use thumbUrl if available, otherwise create a placeholder
+      const imageUrl = slide.thumbUrl || '/assets/logo/logo_drafter_transparent.png'
       
       await new Promise((resolve, reject) => {
         img.onload = resolve
         img.onerror = reject
-        img.src = slide.image
+        img.src = imageUrl
       })
       
       // Draw image to cover the canvas
@@ -73,48 +71,26 @@ export async function renderSlideToCanvas({ slide, scale, dpr = 1 }: RenderOptio
     }
   }
   
-  // Draw text if available
-  if (slide.text) {
-    ctx.fillStyle = '#FFFFFF'
-    ctx.font = `${16 * scale}px Arial`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    
-    const textX = (slide.exportSize.w * scale) / 2
-    const textY = (slide.exportSize.h * scale) / 2
-    
-    // Simple text wrapping
-    const words = slide.text.split(' ')
-    const lines: string[] = []
-    let currentLine = ''
-    
-    for (const word of words) {
-      const testLine = currentLine + (currentLine ? ' ' : '') + word
-      const metrics = ctx.measureText(testLine)
+  // Draw text layers if available
+  if (slide.textLayers && slide.textLayers.length > 0) {
+    for (const layer of slide.textLayers) {
+      ctx.fillStyle = layer.color || '#FFFFFF'
+      ctx.font = `${layer.size * scale}px ${layer.font}`
+      ctx.textAlign = layer.align
+      ctx.textBaseline = 'middle'
       
-      if (metrics.width > slide.exportSize.w * scale * 0.8) {
-        if (currentLine) {
-          lines.push(currentLine)
-          currentLine = word
-        } else {
-          lines.push(word)
-        }
-      } else {
-        currentLine = testLine
+      const textX = layer.x * scale
+      const textY = layer.y * scale
+      
+      // Draw text with stroke if specified
+      if (layer.stroke) {
+        ctx.strokeStyle = layer.stroke.color
+        ctx.lineWidth = layer.stroke.width * scale
+        ctx.strokeText(layer.text, textX, textY)
       }
+      
+      ctx.fillText(layer.text, textX, textY)
     }
-    
-    if (currentLine) {
-      lines.push(currentLine)
-    }
-    
-    // Draw lines
-    const lineHeight = 20 * scale
-    const startY = textY - ((lines.length - 1) * lineHeight) / 2
-    
-    lines.forEach((line, index) => {
-      ctx.fillText(line, textX, startY + index * lineHeight)
-    })
   }
   
   return canvas

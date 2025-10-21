@@ -38,6 +38,7 @@ import { groupSlidesBySheetAndDay } from '@/lib/grouping/groupSlides'
 import { defaultDayResolver } from '@/lib/grouping/dayResolvers'
 import { exportCombinedZip, exportPerSheetZips, exportScope } from '@/lib/export/zipper'
 import type { SlidesBySheet, GroupsBySheet } from '@/types/sheets'
+import Step3MultiSheet from '@/components/generate/multi/Step3MultiSheet'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -270,6 +271,7 @@ export function GeneratePage() {
   const [isGroupedBySheet, setIsGroupedBySheet] = useState(true)
   const [expandedSheets, setExpandedSheets] = useState<Record<string, boolean>>({})
   const [selectedSlides, setSelectedSlides] = useState<Record<string, boolean>>({})
+  const [useNewStep3UI, setUseNewStep3UI] = useState(true)
 
   // Load saved data and images on mount
   useEffect(() => {
