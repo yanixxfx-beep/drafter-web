@@ -3,23 +3,25 @@
 import React from 'react'
 import SingleSheetFlow from '@/components/generate/SingleSheetFlow'
 import MultiSheetFlow from '@/components/generate/multi/MultiSheetFlow'
+import { useGenerateStore } from '@/store/generateStore'
 
-export default function Orchestrator() {
-  const [mode, setMode] = React.useState<'single'|'multi'>('single')
+export default function Orchestrator(){
+  const { mode, setMode } = useGenerateStore()
+  
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex gap-2">
         <button 
-          className={`btn ${mode==='single'?'btn-primary':''}`} 
+          className={`px-4 py-2 rounded ${mode==='single'?'bg-blue-500 text-white':'bg-gray-200 text-gray-700'}`} 
           onClick={()=>setMode('single')}
         >
-          Single sheet
+          Single Sheet
         </button>
         <button 
-          className={`btn ${mode==='multi'?'btn-primary':''}`} 
+          className={`px-4 py-2 rounded ${mode==='multi'?'bg-blue-500 text-white':'bg-gray-200 text-gray-700'}`} 
           onClick={()=>setMode('multi')}
         >
-          Multi sheet
+          Multi Sheet
         </button>
       </div>
       {mode==='single' ? <SingleSheetFlow/> : <MultiSheetFlow/>}

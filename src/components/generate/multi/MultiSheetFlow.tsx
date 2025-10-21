@@ -7,21 +7,21 @@ import Step3MultiSheet from './Step3MultiSheet'
 import { type SheetSelection, type RunConfig, type SlidesBySheet } from '@/types/sheets'
 import { type Slide } from '@/types/slide'
 import { defaultDayResolver } from '@/lib/grouping/dayResolvers'
+import { useGenerateStore } from '@/store/generateStore'
 
 export default function MultiSheetFlow() {
-  const [currentStep, setCurrentStep] = useState(1)
+  const { step, setStep, slidesBySheet, setSlidesBySheet } = useGenerateStore()
   const [sheetSelection, setSheetSelection] = useState<SheetSelection | null>(null)
   const [runConfig, setRunConfig] = useState<RunConfig | null>(null)
-  const [generatedSlides, setGeneratedSlides] = useState<SlidesBySheet>({})
   
   const handleStep1Next = (selection: SheetSelection) => {
     setSheetSelection(selection)
-    setCurrentStep(2)
+    setStep(2)
   }
 
   const handleStep2Next = (config: RunConfig) => {
     setRunConfig(config)
-    setCurrentStep(3)
+    setStep(3)
     
     // TODO: Generate slides here and populate generatedSlides
     // For now, we'll use mock data
@@ -57,12 +57,12 @@ export default function MultiSheetFlow() {
         ]
       })
     }
-    setGeneratedSlides(mockSlides)
+    setSlidesBySheet(mockSlides)
   }
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
+    if (step > 1) {
+      setStep((step - 1) as 1|2|3)
     }
   }
 
@@ -82,18 +82,18 @@ export default function MultiSheetFlow() {
   
   return (
     <div className="space-y-6">
-      {currentStep === 1 && <Step1MultiSheet onNext={handleStep1Next} />}
-      {currentStep === 2 && sheetSelection && (
+      {step === 1 && <Step1MultiSheet onNext={handleStep1Next} />}
+      {step === 2 && sheetSelection && (
         <Step2MultiSheet 
           sheetSelection={sheetSelection}
           onNext={handleStep2Next} 
           onBack={handleBack} 
         />
       )}
-      {currentStep === 3 && runConfig && (
+      {step === 3 && runConfig && (
         <Step3MultiSheet 
           run={runConfig}
-          slidesBySheet={generatedSlides}
+          slidesBySheet={slidesBySheet}
           getSheetName={getSheetName}
           resolveDay={defaultDayResolver}
           onReroll={handleReroll}
