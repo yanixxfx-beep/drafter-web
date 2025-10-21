@@ -1,0 +1,474 @@
+'use client'
+
+import AnimatedList from '@/components/ui/AnimatedList'
+import { GlowingEffect } from '@/components/ui/GlowingEffect'
+import SlideEditorCanvas from '@/components/SlideEditorCanvas'
+import { 
+  ChevronRightIcon, 
+  ShuffleIcon, 
+  TextIcon, 
+  ImageIcon, 
+  DownloadIcon, 
+  SettingsIcon
+} from '@/components/ui/Icon'
+import { layoutDesktop } from '@/lib/textLayout'
+
+interface Step3PaneProps {
+  colors: any
+  generatedIdeas: any[]
+  selectedDraft: string | null
+  setSelectedDraft: (id: string) => void
+  isGenerating: boolean
+  isExporting: boolean
+  exportProgress: any
+  step1Data: any
+  step2Data: any
+  availableImages: any[]
+  randomizeAllImages: () => void
+  generateAllDrafts: () => void
+  toggleIdeaExpansion: (ideaId: number) => void
+  getIdeaFormatLabel: (idea: any) => string
+  handleEditSlide: (ideaIndex: number, slideIndex: number) => void
+  randomizeSingleSlideImage: (ideaIndex: number, slideIndex: number) => void
+  exportDraftAsPNG: (slide: any) => void
+  exportAllDraftsAsZIP: () => void
+}
+
+export default function Step3Pane({
+  colors,
+  generatedIdeas,
+  selectedDraft,
+  setSelectedDraft,
+  isGenerating,
+  isExporting,
+  exportProgress,
+  step1Data,
+  step2Data,
+  availableImages,
+  randomizeAllImages,
+  generateAllDrafts,
+  toggleIdeaExpansion,
+  getIdeaFormatLabel,
+  handleEditSlide,
+  randomizeSingleSlideImage,
+  exportDraftAsPNG,
+  exportAllDraftsAsZIP
+}: Step3PaneProps) {
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold mb-2" style={{ color: colors.text }}>
+          Step 3: Review & Export
+        </h2>
+        <p className="text-sm" style={{ color: colors.textMuted }}>
+          Review your slides, make final adjustments, and export your content
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Slides Grid */}
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold" style={{ color: colors.text }}>
+              Generated Ideas ({generatedIdeas.length})
+            </h3>
+            <div className="flex items-center gap-2">
+              {generatedIdeas.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    console.log('🔥 Randomize All Images button clicked!')
+                    console.log('Available images count:', availableImages.length)
+                    console.log('Generated ideas count:', generatedIdeas.length)
+                    randomizeAllImages()
+                  }}
+                  className="px-4 py-2 rounded-lg border flex items-center gap-2 text-sm transition-all hover:scale-105 hover:shadow-lg cursor-pointer relative z-50"
+                  style={{ 
+                    backgroundColor: colors.accent, 
+                    borderColor: colors.accent, 
+                    color: '#ffffff',
+                    fontWeight: '600'
+                  }}
+                  title="Click to randomize all images for all ideas"
+                >
+                  <ShuffleIcon size="sm" />
+                  🎲 Randomize All Images
+                </button>
+              )}
+            {generatedIdeas.length === 0 && (
+              <button
+                onClick={generateAllDrafts}
+                disabled={isGenerating}
+                className="px-4 py-2 rounded-lg border flex items-center gap-2 text-sm"
+                style={{ 
+                  backgroundColor: colors.accent, 
+                  borderColor: colors.accent, 
+                  color: 'white' 
+                }}
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      {exportProgress ? (
+                        <span>Generating... {exportProgress.completed}/{exportProgress.total}</span>
+                      ) : (
+                        'Generating...'
+                      )}
+                  </>
+                ) : (
+                  <>
+                    <TextIcon size="sm" />
+                    Generate Ideas
+                  </>
+                )}
+              </button>
+            )}
+            </div>
+          </div>
+          
+          {generatedIdeas.length === 0 ? (
+            <div className="space-y-4">
+              <div className="text-center py-8">
+                <ImageIcon size="lg" color={colors.textMuted} />
+                <p className="text-sm mt-2" style={{ color: colors.textMuted }}>
+                  No ideas generated yet. Click "Generate Ideas" to create drafts from your spreadsheet.
+                </p>
+                {step1Data?.ideas && (
+                  <p className="text-xs mt-1" style={{ color: colors.textMuted }}>
+                    Ready to generate {step1Data.ideas.length} ideas with multiple slides each
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <AnimatedList
+              items={generatedIdeas.map((idea) => (
+                <div
+                  key={idea.ideaId}
+                  className="rounded-lg border relative cursor-pointer transition-all duration-200"
+                  style={{ 
+                    backgroundColor: colors.surface, 
+                    borderColor: colors.border 
+                  }}
+                  onClick={() => toggleIdeaExpansion(idea.ideaId)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                    e.currentTarget.style.boxShadow = `0 4px 12px ${colors.accent}20`
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
+                  <GlowingEffect
+                    spread={40}
+                    glow={true}
+                    disabled={false}
+                    proximity={64}
+                    inactiveZone={0.01}
+                    variant="purple"
+                    borderWidth={1}
+                  />
+                  {/* Idea Header */}
+                  <div
+                    className="p-4 flex items-center justify-between relative z-10"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold"
+                           style={{ backgroundColor: colors.accent, color: 'white' }}>
+                        {idea.ideaId}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
+                          Idea {idea.ideaId}
+                        </h4>
+                        <p className="text-xs truncate max-w-md" style={{ color: colors.textMuted }}>
+                          {idea.ideaText}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 rounded font-medium" style={{ 
+                        backgroundColor: colors.accent + '20', 
+                        color: colors.accent 
+                      }}>
+                        {getIdeaFormatLabel(idea)}
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded" style={{ 
+                        backgroundColor: colors.surface2, 
+                        color: colors.textMuted 
+                      }}>
+                        {idea.slides.length} slides
+                      </span>
+                      <ChevronRightIcon 
+                        size="sm" 
+                        color={colors.textMuted}
+                        className={`transition-transform ${idea.isExpanded ? 'rotate-90' : ''}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Expanded Slides */}
+                  {idea.isExpanded && (
+                    <div className="px-4 pb-4 relative z-10" onClick={(e) => e.stopPropagation()}>
+                      <div className="grid grid-cols-2 gap-3">
+                        {idea.slides.map((slide: any, slideIndex: number) => {
+                          const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                          return (
+                          <div
+                            key={slide.id}
+                              className={`rounded-lg border-2 cursor-pointer transition-all relative group ${
+                              selectedDraft === slide.id ? 'border-solid' : 'border-dashed hover:border-solid'
+                            }`}
+                            style={{ 
+                              backgroundColor: colors.surface2, 
+                                borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                                aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                            }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedDraft(slide.id)
+                              }}
+                          >
+                            <SlideEditorCanvas
+                              key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                              src={slide.image}
+                              bgColor="#000000"
+                              className="w-full h-full rounded-lg"
+                              priority="low"
+                              drawOverlay={(ctx, cssW, cssH) => {
+                                // Draw text overlay for thumbnails
+                                if (!step2Data || !slide.caption) return
+                                
+                                const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
+                                
+                                // Calculate scale factor to fit thumbnail while maintaining aspect ratio
+                                const fullWidth = slide.format === '3:4' ? 1080 : 1080
+                                const fullHeight = slide.format === '3:4' ? 1440 : 1920
+                                const scaleX = cssW / fullWidth
+                                const scaleY = cssH / fullHeight
+                                const scale = Math.min(scaleX, scaleY)
+                                
+                                
+                                // Use EXACT same settings as Step 2, but ensure text fits within thumbnail bounds
+                                const scaledFontSize = (step2Data.fontSize || 52) * scale
+                                const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
+                                const scaledSafeMargin = 64 * scale
+                                
+                                // Ensure text width doesn't exceed thumbnail bounds
+                                const maxTextWidth = Math.min(
+                                  (fullWidth - 128) * scale,  // Scaled full width minus margins
+                                  cssW - (scaledSafeMargin * 2)  // Actual thumbnail width minus margins
+                                )
+                                
+                                
+                                const layout = layoutDesktop(ctx, {
+                                  text: slide.caption,
+                                  fontFamily: 'TikTok Sans',
+                                  fontWeight: fontWeight as 400 | 500 | 600,
+                                  fontPx: scaledFontSize,
+                                  lineSpacingPx: scaledLineSpacing,
+                                  yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
+                                  xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
+                                  align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
+                                  horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
+                                  textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
+                                  safeMarginPx: scaledSafeMargin,
+                                  maxTextWidthPx: maxTextWidth, // Use the smaller of the two widths
+                                  deskW: cssW, // Use actual thumbnail width
+                                  deskH: cssH, // Use actual thumbnail height
+                                  useSafeZone: step2Data.useSafeZone ?? true,
+                                  safeZoneFormat: slide.format || step2Data.safeZoneFormat
+                                })
+                                
+
+                                // Draw text
+                                ctx.save()
+                                ctx.translate(layout.centerX, 0)
+                                ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
+
+                                layout.lines.forEach((line, i) => {
+                                  const x = 0
+                                  const y = layout.baselines[i]
+
+                                  if ((step2Data.outlinePx || 0) > 0) {
+                                    ctx.strokeStyle = '#000000'
+                                    ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
+                                    ctx.lineJoin = 'round'
+                                    ctx.miterLimit = 2
+                                    ctx.strokeText(line, x, y)
+                                  }
+
+                                  ctx.fillStyle = '#FFFFFF'
+                                  ctx.fillText(line, x, y)
+                                })
+
+                                ctx.restore()
+                              }}
+                            />
+                              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                              {slideIndex + 1}
+                            </div>
+                              <div className="absolute top-2 left-2 bg-purple-600 bg-opacity-90 text-white text-xs px-2 py-1 rounded font-medium">
+                                {slide.format}
+                            </div>
+                            {/* Show image source indicator */}
+                              <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                              {slide.imageSource === 'ai-method' ? 'AI Method' : 'Affiliate'}
+                            </div>
+                              {/* Action buttons - shown on hover */}
+                              <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleEditSlide(ideaIndex, slideIndex)
+                                  }}
+                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
+                                  title="Edit slide"
+                                >
+                                  <SettingsIcon size="sm" />
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    console.log(`🔥 Single slide randomize button clicked! Idea: ${ideaIndex}, Slide: ${slideIndex}`)
+                                    console.log('Slide current image:', slide.image)
+                                    console.log('Available images:', availableImages.length)
+                                    randomizeSingleSlideImage(ideaIndex, slideIndex)
+                                  }}
+                                  className="bg-black bg-opacity-70 hover:bg-opacity-90 text-white text-xs px-2 py-1 rounded flex items-center gap-1 cursor-pointer z-50 relative"
+                                  title="Randomize this slide's image"
+                                >
+                                  <ShuffleIcon size="sm" />
+                                  🎲 Randomize
+                                </button>
+                          </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              showGradients={true}
+              enableArrowNavigation={false}
+              displayScrollbar={true}
+            />
+          )}
+        </div>
+
+        {/* Export Options */}
+        <div 
+          className="p-6 rounded-lg border"
+          style={{ 
+            backgroundColor: colors.surface, 
+            borderColor: colors.border 
+          }}
+        >
+          <h3 className="text-lg font-semibold mb-4" style={{ color: colors.text }}>
+            Export Options
+          </h3>
+          
+          {generatedIdeas.length === 0 ? (
+            <div className="text-center py-8">
+              <TextIcon size="lg" color={colors.textMuted} />
+              <p className="text-sm mt-2" style={{ color: colors.textMuted }}>
+                Generate ideas first to see export options
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Selected Draft Info */}
+              {selectedDraft && (
+                <div className="p-4 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
+                  <h4 className="text-sm font-semibold mb-2" style={{ color: colors.text }}>
+                    Selected Slide
+                  </h4>
+                  {(() => {
+                    const selectedSlide = generatedIdeas
+                      .flatMap(idea => idea.slides)
+                      .find(slide => slide.id === selectedDraft)
+                    return selectedSlide ? (
+                      <>
+                        <p className="text-xs mb-1" style={{ color: colors.textMuted }}>
+                          Idea {generatedIdeas.find(idea => idea.slides.some((s: any) => s.id === selectedDraft))?.ideaId}
+                        </p>
+                        <p className="text-xs mb-3" style={{ color: colors.textMuted }}>
+                          {selectedSlide.caption}
+                        </p>
+                        <button
+                          onClick={() => exportDraftAsPNG(selectedSlide)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm flex items-center justify-center gap-2"
+                          style={{ 
+                            backgroundColor: colors.buttonBg, 
+                            borderColor: colors.border, 
+                            color: colors.text 
+                          }}
+                        >
+                          <DownloadIcon size="sm" />
+                          Export This Slide
+                        </button>
+                      </>
+                    ) : null
+                  })()}
+                </div>
+              )}
+
+              {/* Export All */}
+              <button
+                onClick={exportAllDraftsAsZIP}
+                disabled={isExporting}
+                className="w-full px-4 py-3 rounded-lg border flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: colors.accent, 
+                  borderColor: colors.accent, 
+                  color: 'white' 
+                }}
+              >
+                {isExporting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon size="sm" />
+                    Export All Ideas ({generatedIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)} slides)
+                  </>
+                )}
+              </button>
+
+              {/* Regenerate */}
+              <button
+                onClick={generateAllDrafts}
+                disabled={isGenerating}
+                className="w-full px-4 py-2 rounded-lg border text-sm flex items-center justify-center gap-2"
+                style={{ 
+                  backgroundColor: colors.buttonBg, 
+                  borderColor: colors.border, 
+                  color: colors.text 
+                }}
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-transparent"></div>
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <TextIcon size="sm" />
+                    Regenerate Ideas
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

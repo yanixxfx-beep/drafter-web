@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext'
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams()
-  const error = searchParams.get('error')
+  const error = searchParams?.get('error')
   const { colors } = useTheme()
 
   const getErrorMessage = (error: string | null) => {
@@ -33,7 +33,7 @@ export default function AuthErrorPage() {
         >
           <h1 
             className="text-2xl font-bold mb-4"
-            style={{ color: colors.textPrimary }}
+            style={{ color: colors.text }}
           >
             Authentication Error
           </h1>
@@ -42,7 +42,7 @@ export default function AuthErrorPage() {
             className="text-sm mb-6"
             style={{ color: colors.textSecondary }}
           >
-            {getErrorMessage(error)}
+            {getErrorMessage(error || null)}
           </p>
           
           <div className="space-y-3">
@@ -63,7 +63,7 @@ export default function AuthErrorPage() {
               style={{
                 backgroundColor: 'transparent',
                 borderColor: colors.border,
-                color: colors.textPrimary
+                color: colors.text
               }}
             >
               Try Again

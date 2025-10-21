@@ -34,6 +34,9 @@ import {
 } from '@/components/ui/Icon'
 import { CloseProjectModal } from '@/components/ui/CloseProjectModal'
 import { SlideEditor } from '@/components/pages/SlideEditor'
+import Step1Pane from '@/components/generate/parts/Step1Pane'
+import Step2Pane from '@/components/generate/parts/Step2Pane'
+import Step3Pane from '@/components/generate/parts/Step3Pane'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -4026,10 +4029,58 @@ export function GeneratePage() {
         </div>
 
         {/* Step Content */}
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
+        {currentStep === 1 && (
+          <Step1Pane
+            colors={colors}
+            status={status}
+            isLoadingSheets={isLoadingSheets}
+            spreadsheets={spreadsheets}
+            fetchSpreadsheets={fetchSpreadsheets}
+            step1Data={step1Data}
+            handleSpreadsheetSelect={handleSpreadsheetSelect}
+            availableSheets={availableSheets}
+            handleSheetSelect={handleSheetSelect}
+            signIn={signIn}
+          />
+        )}
+        {currentStep === 2 && (
+          <Step2Pane
+            colors={colors}
+            fontLoaded={fontLoaded}
+            getCanvasDimensions={getCanvasDimensions}
+            step2Data={step2Data}
+            setStep2Data={setStep2Data}
+            previewCanvas={previewCanvas}
+            currentImage={currentImage}
+            currentCaption={currentCaption}
+            setCurrentCaption={setCurrentCaption}
+            handleRandomImage={handleRandomImage}
+            handleRandomCaption={handleRandomCaption}
+          />
+        )}
         {currentStep === 3 && renderStep2_5()}
-        {currentStep === 4 && renderStep3()}
+        {currentStep === 4 && (
+          <Step3Pane
+            colors={colors}
+            generatedIdeas={generatedIdeas}
+            selectedDraft={selectedDraft}
+            setSelectedDraft={setSelectedDraft}
+            isGenerating={isGenerating}
+            isExporting={isExporting}
+            exportProgress={exportProgress}
+            step1Data={step1Data}
+            step2Data={step2Data}
+            availableImages={availableImages}
+            randomizeAllImages={randomizeAllImages}
+            generateAllDrafts={generateAllDrafts}
+            toggleIdeaExpansion={toggleIdeaExpansion}
+            getIdeaFormatLabel={getIdeaFormatLabel}
+            handleEditSlide={handleEditSlide}
+            randomizeSingleSlideImage={randomizeSingleSlideImage}
+            exportDraftAsPNG={exportDraftAsPNG}
+            exportAllDraftsAsZIP={exportAllDraftsAsZIP}
+          />
+        )}
 
         {/* Navigation */}
         {currentStep !== 3 && (

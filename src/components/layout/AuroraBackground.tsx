@@ -11,7 +11,7 @@ export function AuroraBackground() {
         <div 
           className="absolute inset-0 opacity-30"
           style={{
-            background: `linear-gradient(135deg, ${colors.background} 0%, ${colors.surface} 50%, ${colors.surfaceSecondary} 100%)`
+            background: `linear-gradient(135deg, ${colors.background} 0%, ${colors.surface} 50%, ${colors.surface2} 100%)`
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/20 via-purple-50/10 to-pink-50/20" />
@@ -25,7 +25,7 @@ export function AuroraBackground() {
       <div 
         className="absolute inset-0"
         style={{
-          background: `linear-gradient(135deg, ${colors.background} 0%, ${colors.surface} 50%, ${colors.surfaceSecondary} 100%)`
+          background: `linear-gradient(135deg, ${colors.background} 0%, ${colors.surface} 50%, ${colors.surface2} 100%)`
         }}
       />
       
