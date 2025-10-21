@@ -78,3 +78,4 @@ export function migrateSlideToCurrentFormat(slide: Slide): CurrentSlide {
     lastModified: slide.updatedAt
   }
 }
+

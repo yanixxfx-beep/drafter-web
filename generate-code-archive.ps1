@@ -75,3 +75,4 @@ Write-Host "✅ Complete code archive generated: $outputFile" -ForegroundColor G
 Write-Host "📊 Total files processed: $($sourceFiles.Count)" -ForegroundColor Green
 Write-Host "📏 File size: $((Get-Item $outputFile).Length / 1MB) MB" -ForegroundColor Green
 Write-Host "`n🚀 Ready to share with ChatGPT!" -ForegroundColor Green
+

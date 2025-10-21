@@ -110,3 +110,4 @@ export class ThumbnailManager {
     return this.generateThumbnail(slide, targetWidth)
   }
 }
+

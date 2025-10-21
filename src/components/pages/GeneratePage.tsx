@@ -34,7 +34,6 @@ import {
 } from '@/components/ui/Icon'
 import { CloseProjectModal } from '@/components/ui/CloseProjectModal'
 import { SlideEditor } from '@/components/pages/SlideEditor'
-import MultiSheetFlow from '@/components/generate/multi/MultiSheetFlow'
 
 // Session Creation Form Component
 interface SessionCreationFormProps {
@@ -194,8 +193,6 @@ export function GeneratePage() {
   const [step2Data, setStep2Data] = useState<Step2Data | null>(null)
   const [step3Data, setStep3Data] = useState<Step3Data | null>(null)
   
-  // Multi-sheet mode toggle
-  const [isMultiSheetMode, setIsMultiSheetMode] = useState(false)
   
   // Generation Preferences (Step 2.5)
   interface GenerationPreferences {
@@ -4120,33 +4117,6 @@ export function GeneratePage() {
           projectName={sessionName}
         />
 
-        {/* Multi-Sheet Mode Toggle */}
-        {currentStep > 0 && (
-          <div className="mb-6 flex items-center justify-center">
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-              <button
-                className={`px-4 py-2 rounded-md transition-all ${
-                  !isMultiSheetMode
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-                onClick={() => setIsMultiSheetMode(false)}
-              >
-                Single Sheet
-              </button>
-              <button
-                className={`px-4 py-2 rounded-md transition-all ${
-                  isMultiSheetMode
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-                onClick={() => setIsMultiSheetMode(true)}
-              >
-                Multi Sheet
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Slide Editor */}
         {showSlideEditor && editingSlide && step2Data && (
@@ -4225,19 +4195,13 @@ export function GeneratePage() {
         </div>
 
         {/* Step Content */}
-        {isMultiSheetMode ? (
-          <MultiSheetFlow />
-        ) : (
-          <>
-            {currentStep === 1 && renderStep1()}
-            {currentStep === 2 && renderStep2()}
-            {currentStep === 3 && renderStep2_5()}
-            {currentStep === 4 && renderStep3()}
-          </>
-        )}
+        {currentStep === 1 && renderStep1()}
+        {currentStep === 2 && renderStep2()}
+        {currentStep === 3 && renderStep2_5()}
+        {currentStep === 4 && renderStep3()}
 
         {/* Navigation */}
-        {!isMultiSheetMode && currentStep !== 3 && (
+        {currentStep !== 3 && (
         <div className="flex justify-between mt-8">
           <button
             onClick={prevStep}

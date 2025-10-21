@@ -46,3 +46,4 @@ function downloadAs(filename: string, blob: Blob) {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
+

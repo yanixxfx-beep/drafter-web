@@ -26,3 +26,4 @@ export async function GET() {
     hasNextAuthUrl: !!process.env.NEXTAUTH_URL
   })
 }
+
