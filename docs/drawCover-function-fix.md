@@ -136,3 +136,4 @@ drawCover(ctx, img, canvas.width, canvas.height)
 
 
 
+

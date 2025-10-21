@@ -169,15 +169,18 @@ export const MobileSidebar = ({
 export const SidebarLink = ({
   link,
   className,
+  onClick,
   ...props
 }: {
   link: Links;
   className?: string;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
 }) => {
   const { open, animate } = useSidebar();
   return (
     <a
       href={link.href}
+      onClick={onClick}
       className={cn(
         "flex items-center justify-start gap-2  group/sidebar py-2",
         className

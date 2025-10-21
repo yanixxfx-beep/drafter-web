@@ -1,116 +1,58 @@
-// src/hooks/useCanvasRender.ts
-import { useEffect } from "react";
-import { drawContain, loadBitmapFromUrl, loadHtmlImage, resetAndPaintBg, resizeCanvasToCss } from "@/utils/canvas";
-import { getOrCreateBitmap } from "@/utils/bitmapCache";
-import { getBlobForUrl } from "@/utils/blobCache";
-import { decodeBitmapAtSizeFromFile } from "@/utils/decode";
-import { TaskQueue } from "@/utils/taskQueue";
+import { useEffect, useRef } from 'react'
 
-type RenderOpts = {
-  src?: string;          // blob/object URL
-  bgColor?: string;      // default "#000000"
-  drawOverlay?: (ctx: CanvasRenderingContext2D, cssW: number, cssH: number) => void; // text, guides
-  preferBitmap?: boolean; // default true
-  priority?: 'high' | 'low'; // default 'low'
-};
+type Opts = {
+  canvasRef: React.RefObject<HTMLCanvasElement>
+  cssWidth: number
+  cssHeight: number
+  dpr?: number // default: window.devicePixelRatio
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number) => Promise<void> | void
+  deps?: any[]
+}
 
-// Create separate queues for different priorities
-const highPriorityQueue = new TaskQueue(1); // Editor gets priority
-const lowPriorityQueue = new TaskQueue(3);  // Thumbnails get lower priority
+export function useCanvasRender({ canvasRef, cssWidth, cssHeight, dpr, draw, deps = [] }: Opts) {
+  const tokenRef = useRef(0)
 
-export function useCanvasRender(canvas: HTMLCanvasElement | null, opts: RenderOpts) {
   useEffect(() => {
-    if (!canvas) return;
-    const { src, bgColor = "#000000", drawOverlay, preferBitmap = true, priority = 'low' } = opts;
-    let cancelled = false;
+    let cancelled = false
+    const token = ++tokenRef.current
 
+    const run = async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
 
-    // Ensure backing store matches CSS size
-    const { ctx, dpr, cssW, cssH } = resizeCanvasToCss(canvas);
-    resetAndPaintBg(ctx, canvas, bgColor);
-
-    // Calculate target size for decoding (2x for HiDPI)
-    const targetW = cssW * dpr;
-    const targetH = cssH * dpr;
-
-    async function draw() {
-      if (!src) {
-        if (drawOverlay && !cancelled) drawOverlay(ctx, cssW, cssH);
-        return;
+      const _dpr = dpr ?? (globalThis.devicePixelRatio || 1)
+      // Ensure fonts are loaded once before any text render
+      if ((document as any).fonts?.ready) {
+        try { await (document as any).fonts.ready } catch {}
       }
 
-      // Create cache key for this image and size
-      const cacheKey = `${src}@${targetW}x${targetH}`;
-      const queue = priority === 'high' ? highPriorityQueue : lowPriorityQueue;
+      // Resize for HiDPI and apply DPR transform
+      canvas.width = Math.max(1, Math.round(cssWidth * _dpr))
+      canvas.height = Math.max(1, Math.round(cssHeight * _dpr))
+      canvas.style.width = cssWidth + 'px'
+      canvas.style.height = cssHeight + 'px'
 
-      try {
-        
-        // Use cached bitmap or create new one
-        const bmp = await getOrCreateBitmap(
-          cacheKey,
-          () => queue.add(async () => {
-            const t0 = performance.now();
-            const blob = await getBlobForUrl(src);
-            const t1 = performance.now();
-            const bitmap = await decodeBitmapAtSizeFromFile(blob, targetW, targetH);
-            const t2 = performance.now();
-            return bitmap;
-          }),
-          targetW,
-          targetH
-        );
+      const ctx = canvas.getContext('2d', { alpha: true })
+      if (!ctx) return
+      ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0)
+      ctx.imageSmoothingEnabled = true
+      // @ts-ignore
+      if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high'
+      ctx.textBaseline = 'alphabetic'
 
-        if (cancelled) { 
-          try { (bmp as any).close?.(); } catch {} 
-          return; 
-        }
+      // clear
+      ctx.clearRect(0, 0, cssWidth, cssHeight)
 
-        // Draw in CSS pixel coordinates
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        drawContain(ctx, bmp, cssW, cssH);
-        // Don't close the bitmap here - it's cached and might be reused
+      const drawSnap = (v: number) => Math.round(v * _dpr) / _dpr
+      ;(ctx as any)._snap = drawSnap // optional: expose helper for inner logic
 
-      } catch (error) {
-        console.error('❌ useCanvasRender: Fast path failed, trying fallback:', error);
-        if (cancelled) return;
-        
-        // Fallback to old method
-        try {
-          if (preferBitmap && "createImageBitmap" in window) {
-            const bmp = await loadBitmapFromUrl(src);
-            if (cancelled) { try { (bmp as any).close?.(); } catch {} return; }
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            drawContain(ctx, bmp, cssW, cssH);
-            try { (bmp as any).close?.(); } catch {}
-          } else {
-            const img = await loadHtmlImage(src);
-            if (cancelled) return;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            drawContain(ctx, img, cssW, cssH);
-          }
-        } catch (fallbackError) {
-          console.error('❌ useCanvasRender: All methods failed:', fallbackError);
-          // Paint distinct fallback so failures are obvious
-          resetAndPaintBg(ctx, canvas, "#404040");
-        }
-      }
-
-      if (cancelled) return;
-      if (drawOverlay) {
-        drawOverlay(ctx, cssW, cssH);
+      if (!cancelled && tokenRef.current === token) {
+        await draw(ctx, cssWidth, cssHeight, _dpr)
       }
     }
 
-    draw();
-
-    const ro = new ResizeObserver(() => {
-      const { ctx } = resizeCanvasToCss(canvas);
-      resetAndPaintBg(ctx, canvas, bgColor);
-      // Re-render current frame on resize
-      draw();
-    });
-    ro.observe(canvas);
-
-    return () => { cancelled = true; ro.disconnect(); };
-  }, [canvas, opts.src, opts.bgColor, opts.drawOverlay, opts.preferBitmap, opts.priority]);
+    run()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasRef, cssWidth, cssHeight, dpr, ...deps])
 }
