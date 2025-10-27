@@ -749,10 +749,20 @@ export function GeneratePage() {
 
   const queueThumbnailForSlide = (slideId: string, renderConfig: SlideRenderConfig) => {
     clearThumbnails(job => job.id === slideId)
+    
+    // Convert to the format expected by renderSlideToCanvas
+    const basicSlide = {
+      exportSize: renderConfig.slide.exportSize,
+      backgroundColor: renderConfig.slide.backgroundColor,
+      imageRef: renderConfig.slide.imageRef,
+      imageTransform: renderConfig.slide.imageTransform,
+      textLayers: [] // Empty for now - caption is rendered separately
+    }
+    
     enqueueThumbnail({
       id: slideId,
       opts: {
-        slide: renderConfig.slide,
+        slide: basicSlide,
         caption: renderConfig.caption,
         scale: THUMBNAIL_SCALE
       },
