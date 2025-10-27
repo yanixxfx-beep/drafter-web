@@ -109,7 +109,6 @@ const SessionCreationForm: React.FC<SessionCreationFormProps> = ({ onCreateSessi
     </form>
   )
 }
-
 interface GoogleSheet {
   id: string
   name: string
@@ -173,6 +172,13 @@ interface Step3Data {
   }>
 }
 
+type AvailableImage = StoredFile & {
+  url: string
+  fileHandle?: FileSystemFileHandle
+  format: '9:16' | '3:4'
+  category: 'affiliate' | 'ai-method'
+}
+
 export function GeneratePage() {
   const { colors } = useTheme()
   const { data: session, status } = useSession()
@@ -227,7 +233,7 @@ export function GeneratePage() {
   // Step 2 Preview states
   const [currentCaption, setCurrentCaption] = useState<string>('')
   const [currentImage, setCurrentImage] = useState<string>('')
-  const [availableImages, setAvailableImages] = useState<Array<StoredFile & { url: string; fileHandle?: FileSystemFileHandle; id: string }>>([])
+  const [availableImages, setAvailableImages] = useState<AvailableImage[]>([])
   const [fontLoaded, setFontLoaded] = useState<boolean>(false)
   
   // Step 3 Draft states
@@ -455,6 +461,105 @@ export function GeneratePage() {
   const [showSlideEditor, setShowSlideEditor] = useState(false)
   const [editingSlide, setEditingSlide] = useState<{ideaIndex: number, slideIndex: number} | null>(null)
 
+  // Ensure the session creation panel shows whenever no session is active
+  useEffect(() => {
+    if (!currentSession && !showSessionCreation) {
+      setShowSessionCreation(true)
+      setCurrentStep(0)
+    }
+  }, [currentSession, showSessionCreation])
+
+  // Make sure we land on Step 1 once a session exists
+  useEffect(() => {
+    if (currentSession && currentStep === 0) {
+      setCurrentStep(1)
+    }
+  }, [currentSession, currentStep])
+
+  function loadSavedData() {
+    try {
+      setStep2Data((existing) => {
+        if (existing) {
+          return existing
+        }
+
+        return {
+          fontChoice: 'Medium',
+          fontSize: 52,
+          outlinePx: 6,
+          lineSpacing: 12,
+          verticalAlignment: 'center',
+          horizontalAlignment: 'center',
+          yOffset: -100,
+          xOffset: 0,
+          textRotation: 0,
+          autoFit: true,
+          rotateBg180: false,
+          useSafeZone: true,
+          safeZoneFormat: '9:16',
+          showSafeZoneOverlay: false,
+          fillColor: '#FFFFFF',
+          outlineColor: '#000000',
+          backgroundType: 'image',
+          backgroundColor: '#000000'
+        }
+      })
+    } catch (error) {
+      console.error('Failed to load saved data:', error)
+    }
+  }
+
+  async function loadImagesFromStorage() {
+    if (!sessionStore || !ready) {
+      return
+    }
+
+    try {
+      const imageItems = sessionStore.items.filter((item) => {
+        if (item.mime?.startsWith('image/')) {
+          return true
+        }
+        return /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(item.originalName)
+      })
+
+      const images = await Promise.all(
+        imageItems.map(async (item) => {
+          try {
+            const file = await sessionStore.getFile(item.id)
+            if (!file) {
+              return null
+            }
+
+            const url = URL.createObjectURL(file)
+            return {
+              id: item.id,
+              category: (item.category ?? 'affiliate') as 'affiliate' | 'ai-method',
+              name: item.originalName,
+              type: item.mime || file.type || 'image/jpeg',
+              size: item.bytes ?? file.size,
+              uploadedAt: new Date(item.createdAt).getTime(),
+              url,
+              format: (item.format ?? '9:16') as '9:16' | '3:4'
+            } as AvailableImage
+          } catch (error) {
+            console.warn(`Failed to load image ${item.originalName}:`, error)
+            return null
+          }
+        })
+      )
+
+      const validImages = images.filter((image): image is AvailableImage => image !== null)
+
+      setAvailableImages(validImages)
+
+      if (!currentImage && validImages.length > 0) {
+        setCurrentImage(validImages[0].url)
+      }
+    } catch (error) {
+      console.error('Failed to load images from storage:', error)
+    }
+  }
+
   // Load saved data and images on mount
   useEffect(() => {
     loadSavedData()
@@ -537,15 +642,6 @@ export function GeneratePage() {
     return { ctx, base, scale, dpr }
   }
   
-  // Update canvas dimensions when format changes
-  useEffect(() => {
-    if (canvasRef.current) {
-      const dimensions = getCanvasDimensions()
-      canvasRef.current.style.width = `${dimensions.w}px`
-      canvasRef.current.style.height = `${dimensions.h}px`
-    }
-  }, [step2Data?.safeZoneFormat])
-
   // Session management functions
   const createSession = (name: string) => {
     const newSession: SessionData = {
@@ -560,6 +656,7 @@ export function GeneratePage() {
     localStorage.setItem('drafter_sessions', JSON.stringify(sessions))
     
     setCurrentSession(newSession)
+    setSessionName(name)
     setShowSessionCreation(false)
     setCurrentStep(1)
   }
@@ -576,6 +673,7 @@ export function GeneratePage() {
 
   const loadSession = (session: SessionData) => {
     setCurrentSession(session)
+    setSessionName(session.name)
     if (session.step1Data) setStep1Data(session.step1Data)
     if (session.step2Data) setStep2Data(session.step2Data)
     if (session.step3Data) setStep3Data(session.step3Data)
@@ -1645,7 +1743,7 @@ export function GeneratePage() {
       </div>
     )
   }
-
+  
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-8">
@@ -1730,7 +1828,7 @@ export function GeneratePage() {
                   />
                 )}
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -1820,7 +1918,7 @@ export function GeneratePage() {
               {currentStep < 4 && <ChevronRightIcon size="sm" />}
           </button>
         </div>
-        )}
+      )}
       </div>
     </div>
   )

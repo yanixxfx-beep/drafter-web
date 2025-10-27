@@ -135,7 +135,7 @@ export default function Step2Pane({
             <SlideEditorCanvas
               src={currentImage || undefined}
               bgColor={backgroundColor}
-              cssSize={cssSize}
+              cssSize={{ width: cssSize.w, height: cssSize.h }}
               exportSize={exportSize}
               imageTransform={imageTransform}
               drawOverlay={drawOverlay}

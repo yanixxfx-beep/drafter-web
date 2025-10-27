@@ -144,12 +144,6 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
     }),
     [rotateBg180, flipH]
   )
-    () => ({
-      rotate180: rotateBg180,
-      flipHorizontal: flipH
-    }),
-    [rotateBg180, flipH]
-  )
 
   // Create text overlay function for the canvas
   const drawTextOverlay = useCallback(
