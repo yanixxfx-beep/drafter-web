@@ -1629,6 +1629,9 @@ export function GeneratePage() {
     const startTime = performance.now()
     const baseIdeas: typeof generatedIdeas = []
     let globalSlideCounter = 0
+    
+    // Track ideaId per sheet for independent numbering
+    const sheetCounters = new Map<string, number>()
 
     try {
       step1Data.ideas.forEach((rawIdea, idx) => {
@@ -1640,9 +1643,20 @@ export function GeneratePage() {
           })
           .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
 
+        const sheetName = rawIdea._sheetName || 'default'
+        
+        // Get or initialize counter for this sheet
+        if (!sheetCounters.has(sheetName)) {
+          sheetCounters.set(sheetName, 0)
+        }
+        const currentSheetCount = sheetCounters.get(sheetName)! + 1
+        sheetCounters.set(sheetName, currentSheetCount)
+        
+        // Use per-sheet counter for ideaId
+        const ideaId = currentSheetCount
+        
         const ideaPlan = getIdeaFormatPlan(idx, totalIdeas)
         const ideaIndex = baseIdeas.length
-        const ideaId = ideaIndex + 1
         const slides: typeof generatedIdeas[0]['slides'] = []
 
         slideEntries.forEach((entry, slideIdx) => {
