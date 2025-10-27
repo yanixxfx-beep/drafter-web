@@ -768,8 +768,11 @@ export function GeneratePage() {
       },
       onComplete: (url) => {
         let previousUrl: string | null = null
+        
+        // Use functional update with proper state handling
         setGeneratedIdeas(prev => {
-          const next = prev.map(idea => ({
+          // Only update if the slide still exists
+          const updated = prev.map(idea => ({
             ...idea,
             slides: idea.slides.map(slide => {
               if (slide.id !== slideId) {
@@ -787,7 +790,7 @@ export function GeneratePage() {
             })
           }))
 
-          return next
+          return updated
         })
 
         if (previousUrl && previousUrl !== url) {
@@ -1153,15 +1156,25 @@ export function GeneratePage() {
       throw new Error('Step 2 settings are required for image assignment.')
     }
 
+    // Filter images by explicit category first
     const affiliateImages = availableImages.filter(
-      (img) => img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
+      (img) => img.category === 'affiliate'
     )
     const aiMethodImages = availableImages.filter(
-      (img) => img.category === 'ai-method' || img.name?.includes('ai-method')
+      (img) => img.category === 'ai-method'
     )
+    
+    // If no explicit categories, fall back to name-based filtering
+    // (only if categories weren't set properly)
+    const affiliateByFallback = affiliateImages.length === 0 
+      ? availableImages.filter(img => !img.name?.includes('ai-method') && !img.category) 
+      : affiliateImages
+    const aiMethodByFallback = aiMethodImages.length === 0
+      ? availableImages.filter(img => img.name?.includes('ai-method'))
+      : aiMethodImages
 
-    const shuffledAffiliate = [...affiliateImages]
-    const shuffledAiMethod = [...aiMethodImages]
+    const shuffledAffiliate = [...affiliateByFallback]
+    const shuffledAiMethod = [...aiMethodByFallback]
 
     for (let i = shuffledAffiliate.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
