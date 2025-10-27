@@ -1,7 +1,10 @@
 'use client'
 
+import { useCallback, useMemo } from 'react'
+import SlideEditorCanvas from '@/components/SlideEditorCanvas'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { ImageIcon, ShuffleIcon } from '@/components/ui/Icon'
+import { loadSafeZone, drawSafeZoneOverlay } from '@/utils/safeZones'
 
 interface Step2PaneProps {
   colors: any
@@ -9,12 +12,18 @@ interface Step2PaneProps {
   getCanvasDimensions: () => { w: number; h: number }
   step2Data: any
   setStep2Data: (fn: (prev: any) => any) => void
-  previewCanvas: HTMLCanvasElement | null
   currentImage: string | null
   currentCaption: string
   setCurrentCaption: (caption: string) => void
   handleRandomImage: () => void
   handleRandomCaption: () => void
+  drawCaption: (
+    ctx: CanvasRenderingContext2D,
+    caption: string,
+    canvasWidth: number,
+    canvasHeight: number,
+    format?: '9:16' | '3:4'
+  ) => void
 }
 
 export default function Step2Pane({
@@ -23,13 +32,66 @@ export default function Step2Pane({
   getCanvasDimensions,
   step2Data,
   setStep2Data,
-  previewCanvas,
   currentImage,
   currentCaption,
   setCurrentCaption,
   handleRandomImage,
-  handleRandomCaption
+  handleRandomCaption,
+  drawCaption
 }: Step2PaneProps) {
+  if (!step2Data) {
+    return null
+  }
+
+  const format = (step2Data?.safeZoneFormat || '9:16') as '9:16' | '3:4'
+  const exportSize = useMemo(
+    () =>
+      format === '3:4'
+        ? { width: 1080, height: 1440 }
+        : { width: 1080, height: 1920 },
+    [format]
+  )
+
+  const cssSize = useMemo(() => getCanvasDimensions(), [getCanvasDimensions, format])
+
+  const imageTransform = useMemo(
+    () => ({
+      rotate180: step2Data?.rotateBg180 ?? false,
+      flipHorizontal: step2Data?.flipH ?? false
+    }),
+    [step2Data?.rotateBg180, step2Data?.flipH]
+  )
+
+  const backgroundColor =
+    step2Data?.backgroundType === 'solid' ? step2Data?.backgroundColor || '#000000' : '#000000'
+
+  const drawOverlay = useCallback(
+    (ctx: CanvasRenderingContext2D, cssW: number, cssH: number, _dpr: number) => {
+      if (currentCaption) {
+        drawCaption(ctx, currentCaption, cssW, cssH, format)
+      }
+
+      if (step2Data?.showSafeZoneOverlay && step2Data?.useSafeZone) {
+        const safeZone = loadSafeZone(format)
+        if (safeZone) {
+          const scaleX = cssW / safeZone.canvas[0]
+          const scaleY = cssH / safeZone.canvas[1]
+          ctx.save()
+          ctx.scale(scaleX, scaleY)
+          drawSafeZoneOverlay(ctx, safeZone, true)
+          ctx.restore()
+        }
+      }
+    },
+    [
+      currentCaption,
+      drawCaption,
+      format,
+      step2Data?.showSafeZoneOverlay,
+      step2Data?.useSafeZone
+    ]
+  )
+
   return (
     <div className="space-y-4">
       <div className="text-center">
@@ -43,11 +105,11 @@ export default function Step2Pane({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Compact Preview */}
-        <div 
+        <div
           className="p-4 rounded-lg border"
-          style={{ 
-            backgroundColor: colors.surface, 
-            borderColor: colors.border 
+          style={{
+            backgroundColor: colors.surface,
+            borderColor: colors.border
           }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -59,473 +121,315 @@ export default function Step2Pane({
               <span>{fontLoaded ? 'TikTok Sans' : 'System Font'}</span>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className="rounded-lg border mb-3 relative overflow-hidden"
-            style={{ 
-              backgroundColor: colors.surface2, 
+            style={{
+              backgroundColor: colors.surface2,
               borderColor: colors.border,
-              width: `${getCanvasDimensions().w}px`,
-              height: `${getCanvasDimensions().h}px`,
-              aspectRatio: step2Data?.safeZoneFormat === '3:4' ? '3/4' : '9/16'
+              width: `${cssSize.w}px`,
+              height: `${cssSize.h}px`,
+              aspectRatio: format === '3:4' ? '3/4' : '9/16'
             }}
           >
-            {previewCanvas ? (
-              <img 
-                src={previewCanvas.toDataURL()} 
-                alt="Preview" 
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  objectPosition: 'center'
-                }}
-              />
-            ) : currentImage ? (
-              <div className="relative w-full h-full">
-                <img 
-                  src={currentImage} 
-                  alt="Preview" 
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'center'
-                  }}
-                />
-                {/* Fallback CSS text overlay if canvas rendering fails */}
-                {currentCaption && (
-                  <div 
-                    className="absolute inset-0 flex items-center justify-center px-6 py-8"
-                    style={{
-                      textAlign: (step2Data?.horizontalAlignment || 'center') as any,
-                      // Apply X and Y offset positioning to match canvas rendering
-                      // Calculate the same positioning as the desktop app
-                      transform: `translate(${((step2Data?.xOffset !== undefined ? step2Data.xOffset : 0) * 0.25)}px, ${((step2Data?.yOffset !== undefined ? step2Data.yOffset : 0) * 0.25)}px) rotate(${step2Data?.textRotation || 0}deg)`
-                    }}
-                  >
-                    <p 
-                      className="caption font-bold"
-                      style={{ 
-                        color: 'white',
-                        fontSize: `${(step2Data?.fontSize || 52) * 0.25}px`,
-                        textShadow: `0 0 ${(step2Data?.outlinePx || 6) * 0.25}px black, 0 0 ${(step2Data?.outlinePx || 6) * 0.5}px black, 0 0 ${(step2Data?.outlinePx || 6) * 0.25}px black`,
-                        lineHeight: `${((step2Data?.fontSize || 52) + (step2Data?.lineSpacing || 12)) * 0.25}px`,
-                        fontWeight: step2Data?.fontChoice === 'SemiBold' ? 600 : step2Data?.fontChoice === 'Medium' ? 500 : 400,
-                        WebkitFontSmoothing: 'antialiased',
-                        MozOsxFontSmoothing: 'grayscale',
-                        textRendering: 'optimizeLegibility',
-                        wordWrap: 'break-word',
-                        overflowWrap: 'break-word',
-                        whiteSpace: 'pre-wrap'
-                      }}
-                    >
-                      {currentCaption}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <ImageIcon size="md" color={colors.textMuted} />
-                  <p className="text-xs mt-2" style={{ color: colors.textMuted }}>
-                    Click Random Image
-                  </p>
-                </div>
+            <SlideEditorCanvas
+              src={currentImage || undefined}
+              bgColor={backgroundColor}
+              cssSize={cssSize}
+              exportSize={exportSize}
+              imageTransform={imageTransform}
+              drawOverlay={drawOverlay}
+              className="absolute inset-0"
+            />
+            {!currentImage && (
+              <div
+                className="absolute inset-0 flex flex-col items-center justify-center text-center px-6"
+                style={{ color: colors.textMuted }}
+              >
+                <ImageIcon size="lg" />
+                <p className="mt-2 text-xs">
+                  Upload or select an image to preview your caption
+                </p>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <label htmlFor="caption-input" className="block text-xs font-medium" style={{ color: colors.textMuted }}>
+              Caption Text
+            </label>
+            <textarea
+              id="caption-input"
+              value={currentCaption}
+              onChange={(e) => setCurrentCaption(e.target.value)}
+              className="w-full h-32 rounded-lg border px-3 py-2 text-sm resize-none transition-all duration-200 focus:outline-none focus:ring-2"
+              style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
+            />
+            <div className="flex items-center justify-between text-xs" style={{ color: colors.textMuted }}>
+              <span>{currentCaption.length} characters</span>
+              <button
+                onClick={handleRandomCaption}
+                className="flex items-center gap-1 text-xs font-medium transition-colors"
+                style={{ color: colors.accent }}
+              >
+                <ShuffleIcon size="sm" />
+                Random Caption
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3">
             <button
               onClick={handleRandomImage}
-              className="px-3 py-2 rounded-lg border text-xs"
-              style={{ 
-                backgroundColor: colors.buttonBg, 
-                borderColor: colors.border, 
-                color: colors.text 
-              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all duration-200 hover:scale-105"
+              style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
             >
-              <ShuffleIcon size="sm" className="inline mr-1" />
-              Random
-            </button>
-            <button
-              onClick={handleRandomCaption}
-              className="px-3 py-2 rounded-lg border text-xs"
-              style={{ 
-                backgroundColor: colors.buttonBg, 
-                borderColor: colors.border, 
-                color: colors.text 
-              }}
-            >
-              <ShuffleIcon size="sm" className="inline mr-1" />
-              Caption
+              <ImageIcon size="sm" />
+              Random Image
             </button>
           </div>
         </div>
 
-        {/* Caption Editor */}
-        <div 
-          className="p-4 rounded-lg border"
-          style={{ 
-            backgroundColor: colors.surface, 
-            borderColor: colors.border 
-          }}
-        >
-          <h3 className="text-sm font-semibold mb-3" style={{ color: colors.text }}>
-            Caption Text
-          </h3>
-          <textarea
-            value={currentCaption}
-            onChange={(e) => setCurrentCaption(e.target.value)}
-            placeholder="Enter or generate a caption..."
-            rows={8}
-            className="w-full h-[calc(100%-2rem)] px-3 py-2 rounded-lg border resize-none text-sm"
-            style={{ 
-              backgroundColor: colors.surface2, 
-              borderColor: colors.border, 
-              color: colors.text 
-            }}
-          />
-        </div>
-
-        {/* Compact Settings */}
-        <div 
-          className="p-4 rounded-lg border"
-          style={{ 
-            backgroundColor: colors.surface, 
-            borderColor: colors.border 
-          }}
-        >
-          <h3 className="text-sm font-semibold mb-3" style={{ color: colors.text }}>
-            Text Settings
-          </h3>
-          
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+        {/* Controls */}
+        <div className="lg:col-span-2 space-y-4">
+          <div
+            className="p-4 rounded-lg border"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Font Size
+                <label htmlFor="font-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
+                  Font Weight
                 </label>
+                <select
+                  id="font-select"
+                  name="fontChoice"
+                  value={step2Data?.fontChoice || 'Medium'}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, fontChoice: e.target.value } : null)}
+                  className="w-full px-2 py-1 rounded-lg border text-sm"
+                  style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
+                >
+                  <option value="Regular">Regular</option>
+                  <option value="Medium">Medium</option>
+                  <option value="SemiBold">Semi Bold</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Font Size</label>
                 <NumberInput
-                  value={step2Data?.fontSize || 52}
-                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, fontSize: value } : null)}
-                  min={20}
+                  min={16}
                   max={120}
                   step={1}
-                  suffix="px"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
+                  value={step2Data?.fontSize || 52}
+                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, fontSize: value } : null)}
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Outline
-                </label>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Outline Width</label>
                 <NumberInput
-                  value={step2Data?.outlinePx || 6}
-                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, outlinePx: value } : null)}
                   min={0}
                   max={20}
                   step={1}
-                  suffix="px"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
+                  value={step2Data?.outlinePx || 6}
+                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, outlinePx: value } : null)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Line Spacing</label>
+                <NumberInput
+                  min={0}
+                  max={60}
+                  step={1}
+                  value={step2Data?.lineSpacing || 12}
+                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, lineSpacing: value } : null)}
                 />
               </div>
             </div>
+          </div>
 
-            <div>
-              <label htmlFor="font-weight-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                Font Weight
-              </label>
-              <select
-                id="font-weight-select"
-                name="fontWeight"
-                value={step2Data?.fontChoice || 'Medium'}
-                onChange={(e) => setStep2Data(prev => prev ? { ...prev, fontChoice: e.target.value } : null)}
-                className="w-full px-2 py-1 rounded-lg border text-sm"
-                style={{ 
-                  backgroundColor: colors.surface2, 
-                  borderColor: colors.border, 
-                  color: colors.text 
-                }}
-              >
-                <option value="Medium">Medium</option>
-                <option value="SemiBold">SemiBold</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="vertical-alignment-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Vertical Alignment
-              </label>
-              <select
-                id="vertical-alignment-select"
-                name="verticalAlignment"
-                value={step2Data?.verticalAlignment || 'center'}
-                onChange={(e) => setStep2Data(prev => prev ? { ...prev, verticalAlignment: e.target.value } : null)}
-                className="w-full px-2 py-1 rounded-lg border text-sm"
-                style={{ 
-                  backgroundColor: colors.surface2, 
-                  borderColor: colors.border, 
-                  color: colors.text 
-                }}
-              >
-                <option value="top">Top</option>
-                <option value="center">Center</option>
-                <option value="bottom">Bottom</option>
-              </select>
-              </div>
+          <div
+            className="p-4 rounded-lg border space-y-4"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="horizontal-alignment-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Horizontal Alignment
-                </label>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Vertical Alignment</label>
                 <select
-                  id="horizontal-alignment-select"
-                  name="horizontalAlignment"
+                  value={step2Data?.verticalAlignment || 'center'}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, verticalAlignment: e.target.value } : null)}
+                  className="w-full px-2 py-1 rounded-lg border text-sm"
+                  style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
+                >
+                  <option value="top">Top</option>
+                  <option value="center">Center</option>
+                  <option value="bottom">Bottom</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Horizontal Alignment</label>
+                <select
                   value={step2Data?.horizontalAlignment || 'center'}
                   onChange={(e) => setStep2Data(prev => prev ? { ...prev, horizontalAlignment: e.target.value } : null)}
                   className="w-full px-2 py-1 rounded-lg border text-sm"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
+                  style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
                 >
                   <option value="left">Left</option>
                   <option value="center">Center</option>
                   <option value="right">Right</option>
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  X Offset
-                </label>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Y Offset (px)</label>
                 <NumberInput
-                  value={step2Data?.xOffset || 0}
-                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, xOffset: value } : null)}
-                  min={-200}
-                  max={200}
+                  min={-500}
+                  max={500}
                   step={1}
-                  suffix="px"
-                  style={{
-                    backgroundColor: colors.surface2,
-                    borderColor: colors.border,
-                    color: colors.text
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Y Offset
-                </label>
-                <NumberInput
-                  value={step2Data?.yOffset || 0}
+                  value={step2Data?.yOffset ?? -100}
                   onChange={(value) => setStep2Data(prev => prev ? { ...prev, yOffset: value } : null)}
-                  min={-200}
-                  max={200}
-                  step={1}
-                  suffix="px"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Line Spacing
-                </label>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>X Offset (px)</label>
                 <NumberInput
-                  value={step2Data?.lineSpacing || 12}
-                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, lineSpacing: value } : null)}
-                  min={0}
-                  max={50}
+                  min={-500}
+                  max={500}
                   step={1}
-                  suffix="px"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
+                  value={step2Data?.xOffset ?? 0}
+                  onChange={(value) => setStep2Data(prev => prev ? { ...prev, xOffset: value } : null)}
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Text Rotation
-                </label>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Text Rotation (°)</label>
                 <NumberInput
-                  value={step2Data?.textRotation || 0}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  value={step2Data?.textRotation ?? 0}
                   onChange={(value) => setStep2Data(prev => prev ? { ...prev, textRotation: value } : null)}
-                  min={-45}
-                  max={45}
-                  step={1}
-                  suffix="°"
-                  style={{
-                    backgroundColor: colors.surface2,
-                    borderColor: colors.border,
-                    color: colors.text
-                  }}
                 />
               </div>
             </div>
 
-            {/* Safe Zone Controls */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium" style={{ color: colors.text }}>
-                Safe Zones
-              </h4>
-              
-              <div className="flex items-center gap-4">
-                <label htmlFor="enable-safezone-checkbox" className="flex items-center gap-2">
-                  <input
-                    id="enable-safezone-checkbox"
-                    name="useSafeZone"
-                    type="checkbox"
-                    checked={step2Data?.useSafeZone ?? true}
-                    onChange={(e) => setStep2Data(prev => prev ? { ...prev, useSafeZone: e.target.checked } : null)}
-                    className="rounded"
-                  />
-                  <span className="text-xs" style={{ color: colors.textMuted }}>
-                    Enable Safe Zone
-                  </span>
-                </label>
-                
-                <label htmlFor="show-overlay-checkbox" className="flex items-center gap-2">
-                  <input
-                    id="show-overlay-checkbox"
-                    name="showSafeZoneOverlay"
-                    type="checkbox"
-                    checked={step2Data?.showSafeZoneOverlay ?? false}
-                    onChange={(e) => setStep2Data(prev => prev ? { ...prev, showSafeZoneOverlay: e.target.checked } : null)}
-                    className="rounded"
-                  />
-                  <span className="text-xs" style={{ color: colors.textMuted }}>
-                    Show Overlay
-                  </span>
-                </label>
-              </div>
-              
-              <div>
-                <label htmlFor="format-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
-                  Format
-                </label>
-                <select
-                  id="format-select"
-                  name="safeZoneFormat"
-                  value={step2Data?.safeZoneFormat || '9:16'}
-                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, safeZoneFormat: e.target.value } : null)}
-                  className="w-full px-2 py-1 rounded-lg border text-sm"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
-                >
-                  <option value="9:16">9:16 (TikTok)</option>
-                  <option value="3:4">3:4 (Instagram)</option>
-                </select>
-              </div>
-            </div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.text }}>
+                <input
+                  type="checkbox"
+                  checked={step2Data?.autoFit ?? true}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, autoFit: e.target.checked } : null)}
+                  className="rounded"
+                  style={{ accentColor: colors.accent }}
+                />
+                Auto-fit Text
+              </label>
 
-            {/* Background Controls */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium" style={{ color: colors.text }}>
-                Background
-              </h4>
-              
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.text }}>
+                <input
+                  type="checkbox"
+                  checked={step2Data?.useSafeZone ?? false}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, useSafeZone: e.target.checked } : null)}
+                  className="rounded"
+                  style={{ accentColor: colors.accent }}
+                />
+                Use Safe Zone
+              </label>
+
+              {step2Data?.useSafeZone && (
+                <div className="ml-6">
+                  <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Safe Zone Format</label>
+                  <select
+                    value={format}
+                    onChange={(e) => setStep2Data(prev => prev ? { ...prev, safeZoneFormat: e.target.value } : null)}
+                    className="w-full px-2 py-1 rounded-lg border text-sm"
+                    style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
+                  >
+                    <option value="9:16">9:16</option>
+                    <option value="3:4">3:4</option>
+                  </select>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.text }}>
+                <input
+                  type="checkbox"
+                  checked={step2Data?.showSafeZoneOverlay ?? false}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, showSafeZoneOverlay: e.target.checked } : null)}
+                  className="rounded"
+                  style={{ accentColor: colors.accent }}
+                />
+                Show Safe Zone Overlay
+              </label>
+            </div>
+          </div>
+
+          <div
+            className="p-4 rounded-lg border space-y-4"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <h4 className="text-sm font-semibold" style={{ color: colors.text }}>
+              Background & Image
+            </h4>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="background-select" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
+                <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
                   Background Type
                 </label>
                 <select
-                  id="background-select"
-                  name="backgroundType"
                   value={step2Data?.backgroundType || 'image'}
                   onChange={(e) => setStep2Data(prev => prev ? { ...prev, backgroundType: e.target.value } : null)}
                   className="w-full px-2 py-1 rounded-lg border text-sm"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
+                  style={{ backgroundColor: colors.surface2, borderColor: colors.border, color: colors.text }}
                 >
                   <option value="image">Image</option>
                   <option value="solid">Solid Color</option>
                 </select>
               </div>
-              
+
               {step2Data?.backgroundType === 'solid' && (
                 <div>
-                  <label htmlFor="background-color" className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
+                  <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>
                     Background Color
                   </label>
                   <input
-                    id="background-color"
                     type="color"
                     value={step2Data?.backgroundColor || '#000000'}
                     onChange={(e) => setStep2Data(prev => prev ? { ...prev, backgroundColor: e.target.value } : null)}
-                    className="w-full h-8 rounded-lg border"
-                    style={{ 
-                      backgroundColor: colors.surface2, 
-                      borderColor: colors.border 
-                    }}
+                    className="w-full h-8 rounded border"
+                    style={{ backgroundColor: colors.surface2, borderColor: colors.border }}
                   />
                 </div>
               )}
             </div>
 
-            {/* Image Controls */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium" style={{ color: colors.text }}>
-                Image
-              </h4>
-              
-              <div className="flex items-center gap-4">
-                <label htmlFor="flip-horizontal-checkbox" className="flex items-center gap-2">
-                  <input
-                    id="flip-horizontal-checkbox"
-                    name="flipH"
-                    type="checkbox"
-                    checked={step2Data?.flipH ?? false}
-                    onChange={(e) => setStep2Data(prev => prev ? { ...prev, flipH: e.target.checked } : null)}
-                    className="rounded"
-                  />
-                  <span className="text-xs" style={{ color: colors.textMuted }}>
-                    Flip Horizontal
-                  </span>
-                </label>
-                
-                <label htmlFor="rotate-180-checkbox" className="flex items-center gap-2">
-                  <input
-                    id="rotate-180-checkbox"
-                    name="rotateBg180"
-                    type="checkbox"
-                    checked={step2Data?.rotateBg180 ?? false}
-                    onChange={(e) => setStep2Data(prev => prev ? { ...prev, rotateBg180: e.target.checked } : null)}
-                    className="rounded"
-                  />
-                  <span className="text-xs" style={{ color: colors.textMuted }}>
-                    Rotate 180°
-                  </span>
-                </label>
-              </div>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.text }}>
+                <input
+                  type="checkbox"
+                  checked={step2Data?.flipH ?? false}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, flipH: e.target.checked } : null)}
+                  className="rounded"
+                  style={{ accentColor: colors.accent }}
+                />
+                Flip Horizontal
+              </label>
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.text }}>
+                <input
+                  type="checkbox"
+                  checked={step2Data?.rotateBg180 ?? false}
+                  onChange={(e) => setStep2Data(prev => prev ? { ...prev, rotateBg180: e.target.checked } : null)}
+                  className="rounded"
+                  style={{ accentColor: colors.accent }}
+                />
+                Rotate 180°
+              </label>
             </div>
           </div>
         </div>

@@ -11,7 +11,6 @@ import {
   DownloadIcon, 
   SettingsIcon
 } from '@/components/ui/Icon'
-import { layoutDesktop } from '@/lib/textLayout'
 
 interface Step3PaneProps {
   colors: any
@@ -32,6 +31,14 @@ interface Step3PaneProps {
   randomizeSingleSlideImage: (ideaIndex: number, slideIndex: number) => void
   exportDraftAsPNG: (slide: any) => void
   exportAllDraftsAsZIP: () => void
+  drawCaption: (
+    ctx: CanvasRenderingContext2D,
+    caption: string,
+    cssWidth: number,
+    cssHeight: number,
+    format?: '9:16' | '3:4',
+    styleOverride?: any
+  ) => void
 }
 
 export default function Step3Pane({
@@ -52,7 +59,8 @@ export default function Step3Pane({
   handleEditSlide,
   randomizeSingleSlideImage,
   exportDraftAsPNG,
-  exportAllDraftsAsZIP
+  exportAllDraftsAsZIP,
+  drawCaption
 }: Step3PaneProps) {
   return (
     <div className="space-y-6">
@@ -215,6 +223,13 @@ export default function Step3Pane({
                       <div className="grid grid-cols-2 gap-3">
                         {idea.slides.map((slide: any, slideIndex: number) => {
                           const ideaIndex = generatedIdeas.findIndex(i => i.ideaId === idea.ideaId)
+                          const thumbExport = slide.format === '3:4'
+                            ? { width: 1080, height: 1440 }
+                            : { width: 1080, height: 1920 }
+                          const thumbCss = {
+                            width: Math.round(thumbExport.width / 6),
+                            height: Math.round(thumbExport.height / 6)
+                          }
                           return (
                           <div
                             key={slide.id}
@@ -223,90 +238,39 @@ export default function Step3Pane({
                             }`}
                             style={{ 
                               backgroundColor: colors.surface2, 
-                                borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
-                                aspectRatio: slide.format === '3:4' ? '3/4' : '9/16'
+                              borderColor: selectedDraft === slide.id ? colors.accent : colors.border,
+                              width: thumbCss.width,
+                              height: thumbCss.height
                             }}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setSelectedDraft(slide.id)
                               }}
                           >
-                            <SlideEditorCanvas
-                              key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
-                              src={slide.image}
-                              bgColor="#000000"
-                              className="w-full h-full rounded-lg"
-                              priority="low"
-                              drawOverlay={(ctx, cssW, cssH) => {
-                                // Draw text overlay for thumbnails
-                                if (!step2Data || !slide.caption) return
-                                
-                                const fontWeight = step2Data.fontChoice === 'SemiBold' ? 600 : 500
-                                
-                                // Calculate scale factor to fit thumbnail while maintaining aspect ratio
-                                const fullWidth = slide.format === '3:4' ? 1080 : 1080
-                                const fullHeight = slide.format === '3:4' ? 1440 : 1920
-                                const scaleX = cssW / fullWidth
-                                const scaleY = cssH / fullHeight
-                                const scale = Math.min(scaleX, scaleY)
-                                
-                                
-                                // Use EXACT same settings as Step 2, but ensure text fits within thumbnail bounds
-                                const scaledFontSize = (step2Data.fontSize || 52) * scale
-                                const scaledLineSpacing = (step2Data.lineSpacing || 12) * scale
-                                const scaledSafeMargin = 64 * scale
-                                
-                                // Ensure text width doesn't exceed thumbnail bounds
-                                const maxTextWidth = Math.min(
-                                  (fullWidth - 128) * scale,  // Scaled full width minus margins
-                                  cssW - (scaledSafeMargin * 2)  // Actual thumbnail width minus margins
-                                )
-                                
-                                
-                                const layout = layoutDesktop(ctx, {
-                                  text: slide.caption,
-                                  fontFamily: 'TikTok Sans',
-                                  fontWeight: fontWeight as 400 | 500 | 600,
-                                  fontPx: scaledFontSize,
-                                  lineSpacingPx: scaledLineSpacing,
-                                  yOffsetPx: (step2Data.yOffset !== undefined ? step2Data.yOffset : 0) * scale,
-                                  xOffsetPx: (step2Data.xOffset !== undefined ? step2Data.xOffset : 0) * scale,
-                                  align: (step2Data.verticalAlignment || 'center') as 'top' | 'center' | 'bottom',
-                                  horizontalAlign: (step2Data.horizontalAlignment || 'center') as 'left' | 'center' | 'right',
-                                  textRotation: step2Data.textRotation !== undefined ? step2Data.textRotation : 0,
-                                  safeMarginPx: scaledSafeMargin,
-                                  maxTextWidthPx: maxTextWidth, // Use the smaller of the two widths
-                                  deskW: cssW, // Use actual thumbnail width
-                                  deskH: cssH, // Use actual thumbnail height
-                                  useSafeZone: step2Data.useSafeZone ?? true,
-                                  safeZoneFormat: slide.format || step2Data.safeZoneFormat
-                                })
-                                
-
-                                // Draw text
-                                ctx.save()
-                                ctx.translate(layout.centerX, 0)
-                                ctx.rotate(((step2Data.textRotation || 0) * Math.PI) / 180)
-
-                                layout.lines.forEach((line, i) => {
-                                  const x = 0
-                                  const y = layout.baselines[i]
-
-                                  if ((step2Data.outlinePx || 0) > 0) {
-                                    ctx.strokeStyle = '#000000'
-                                    ctx.lineWidth = (step2Data.outlinePx || 0) * scale * 2
-                                    ctx.lineJoin = 'round'
-                                    ctx.miterLimit = 2
-                                    ctx.strokeText(line, x, y)
-                                  }
-
-                                  ctx.fillStyle = '#FFFFFF'
-                                  ctx.fillText(line, x, y)
-                                })
-
-                                ctx.restore()
-                              }}
-                            />
+                            {slide.thumbnail ? (
+                              <img
+                                src={slide.thumbnail}
+                                alt={`Slide ${slideIndex + 1}`}
+                                className="w-full h-full rounded-lg object-cover"
+                              />
+                            ) : (
+                              <SlideEditorCanvas
+                                key={`${slide.id}-${slide.image}-${slide.lastModified || Date.now()}`}
+                                src={slide.image}
+                                bgColor={slide.renderConfig?.slide.backgroundColor || '#000000'}
+                                className="absolute inset-0 rounded-lg"
+                                cssSize={thumbCss}
+                                exportSize={thumbExport}
+                                dpr={typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1}
+                                drawOverlay={(ctx, cssW, cssH, _dpr) => {
+                                  drawCaption(ctx, slide.caption, cssW, cssH, slide.format, slide.styleOverride)
+                                }}
+                                imageTransform={{
+                                  rotate180: slide.rotateBg180,
+                                  flipHorizontal: slide.flipH
+                                }}
+                              />
+                            )}
                               <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
                               {slideIndex + 1}
                             </div>

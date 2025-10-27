@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useTheme } from '@/context/ThemeContext'
 import { X, RotateCw, FlipHorizontal, Move, Shuffle, Edit3 } from 'lucide-react'
-import { layoutDesktop } from '@/lib/textLayout'
-import { drawCover, drawContain } from '@/utils/image'
+import { drawCaptionWithStyle } from '@/lib/render/caption'
+import { loadSafeZone, drawSafeZoneOverlay } from '@/utils/safeZones'
 import SlideEditorCanvas from '@/components/SlideEditorCanvas'
 
 interface Step2Data {
@@ -70,71 +70,146 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
   const [lineSpacing, setLineSpacing] = useState(slide.styleOverride?.lineSpacing || globalSettings.lineSpacing)
   const [verticalAlignment, setVerticalAlignment] = useState(slide.styleOverride?.verticalAlignment || globalSettings.verticalAlignment)
   const [horizontalAlignment, setHorizontalAlignment] = useState(slide.styleOverride?.horizontalAlignment || globalSettings.horizontalAlignment)
-  const [yOffset, setYOffset] = useState(slide.styleOverride?.yOffset !== undefined ? slide.styleOverride.yOffset : (globalSettings.yOffset !== undefined ? globalSettings.yOffset : -100))
+  const [yOffset, setYOffset] = useState(
+    slide.styleOverride?.yOffset !== undefined
+      ? slide.styleOverride.yOffset
+      : globalSettings.yOffset !== undefined
+      ? globalSettings.yOffset
+      : -100
+  )
   const [xOffset, setXOffset] = useState(slide.styleOverride?.xOffset || globalSettings.xOffset)
   const [textRotation, setTextRotation] = useState(slide.styleOverride?.textRotation || globalSettings.textRotation)
   const [autoFit, setAutoFit] = useState(slide.styleOverride?.autoFit || globalSettings.autoFit)
   const [useSafeZone, setUseSafeZone] = useState(slide.styleOverride?.useSafeZone || globalSettings.useSafeZone)
   const [safeZoneFormat, setSafeZoneFormat] = useState(slide.styleOverride?.safeZoneFormat || globalSettings.safeZoneFormat)
-  const [showSafeZoneOverlay, setShowSafeZoneOverlay] = useState(slide.styleOverride?.showSafeZoneOverlay || globalSettings.showSafeZoneOverlay)
+  const [showSafeZoneOverlay, setShowSafeZoneOverlay] = useState(
+    slide.styleOverride?.showSafeZoneOverlay || globalSettings.showSafeZoneOverlay
+  )
+  const fillColor = slide.styleOverride?.fillColor || globalSettings.fillColor || '#FFFFFF'
+  const outlineColor = slide.styleOverride?.outlineColor || globalSettings.outlineColor || '#000000'
+  const [backgroundType, setBackgroundType] = useState(slide.styleOverride?.backgroundType || globalSettings.backgroundType || 'image')
+  const [backgroundColor, setBackgroundColor] = useState(slide.styleOverride?.backgroundColor || globalSettings.backgroundColor || '#000000')
 
-  const currentStyle = useStyleOverride ? {
-    fontChoice, fontSize, outlinePx, lineSpacing, verticalAlignment, horizontalAlignment,
-    yOffset, xOffset, textRotation, autoFit, useSafeZone, safeZoneFormat, showSafeZoneOverlay
-  } : globalSettings
-
-  // Create text overlay function for the canvas
-  const drawTextOverlay = useCallback((ctx: CanvasRenderingContext2D, cssW: number, cssH: number) => {
-    console.log('📝 SlideEditor: Drawing text overlay...')
-    
-    const format = slide.format || globalSettings.safeZoneFormat || '9:16'
-    const fontWeight = currentStyle.fontChoice === 'SemiBold' ? 600 : 500
-
-    const layout = layoutDesktop(ctx, {
-      text: caption,
-      fontFamily: 'TikTok Sans',
-      fontWeight: fontWeight as 400 | 500 | 600,
-      fontPx: currentStyle.fontSize,
-      lineSpacingPx: currentStyle.lineSpacing,
-      yOffsetPx: currentStyle.yOffset,
-      xOffsetPx: currentStyle.xOffset,
-      align: currentStyle.verticalAlignment,
-      horizontalAlign: currentStyle.horizontalAlignment,
-      textRotation: currentStyle.textRotation,
-      safeMarginPx: 64,
-      maxTextWidthPx: cssW - 128,
-      deskW: cssW,
-      deskH: cssH,
-      useSafeZone: currentStyle.useSafeZone,
-      safeZoneFormat: currentStyle.safeZoneFormat
-    })
-
-    // Draw text
-    ctx.save()
-    ctx.translate(layout.centerX, 0)
-    ctx.rotate((currentStyle.textRotation * Math.PI) / 180)
-
-    layout.lines.forEach((line, i) => {
-      const x = 0
-      const y = layout.baselines[i]
-
-      if (currentStyle.outlinePx > 0) {
-        ctx.strokeStyle = '#000000'
-        ctx.lineWidth = currentStyle.outlinePx * 2
-        ctx.lineJoin = 'round'
-        ctx.miterLimit = 2
-        ctx.strokeText(line, x, y)
+  const currentStyle = useStyleOverride
+    ? {
+        fontChoice,
+        fontSize,
+        outlinePx,
+        lineSpacing,
+        verticalAlignment,
+        horizontalAlignment,
+        yOffset,
+        xOffset,
+        textRotation,
+        autoFit,
+        useSafeZone,
+        safeZoneFormat,
+        showSafeZoneOverlay,
+        fillColor,
+        outlineColor
+      }
+    : {
+        ...globalSettings,
+        fillColor: globalSettings.fillColor || '#FFFFFF',
+        outlineColor: globalSettings.outlineColor || '#000000'
       }
 
-      ctx.fillStyle = '#FFFFFF'
-      ctx.fillText(line, x, y)
-    })
+  const currentBackgroundType = useStyleOverride
+    ? backgroundType
+    : globalSettings.backgroundType || 'image'
+  const currentBackgroundColor = useStyleOverride
+    ? backgroundColor
+    : globalSettings.backgroundColor || '#000000'
 
-    ctx.restore()
-    console.log('✅ SlideEditor: Text overlay complete')
-  }, [caption, slide.format, globalSettings, currentStyle])
+  const exportDimensions = useMemo(() => {
+    if (slide.format === '3:4') {
+      return { width: 1080, height: 1440 }
+    }
+    return { width: 1080, height: 1920 }
+  }, [slide.format])
 
-  // No need for manual renderPreview calls - the canvas hook handles it automatically
+  const previewDimensions = useMemo(
+    () => ({
+      width: Math.round(exportDimensions.width / 3),
+      height: Math.round(exportDimensions.height / 3)
+    }),
+    [exportDimensions]
+  )
+
+  const previewDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  const imageTransform = useMemo(
+    () => ({
+      rotate180: rotateBg180,
+      flipHorizontal: flipH
+    }),
+    [rotateBg180, flipH]
+  )
+    () => ({
+      rotate180: rotateBg180,
+      flipHorizontal: flipH
+    }),
+    [rotateBg180, flipH]
+  )
+
+  // Create text overlay function for the canvas
+  const drawTextOverlay = useCallback(
+    (ctx: CanvasRenderingContext2D, cssW: number, cssH: number, _dpr: number) => {
+      const format = slide.format || globalSettings.safeZoneFormat || '9:16'
+      drawCaptionWithStyle(
+        ctx,
+        caption,
+        cssW,
+        cssH,
+        {
+          fontChoice: currentStyle.fontChoice,
+          fontSize: currentStyle.fontSize,
+          lineSpacing: currentStyle.lineSpacing,
+          yOffset: currentStyle.yOffset,
+          xOffset: currentStyle.xOffset,
+          textRotation: currentStyle.textRotation,
+          outlinePx: currentStyle.outlinePx,
+          outlineColor: currentStyle.outlineColor ?? '#000000',
+          fillColor: currentStyle.fillColor ?? '#FFFFFF',
+          verticalAlignment: currentStyle.verticalAlignment,
+          horizontalAlignment: currentStyle.horizontalAlignment,
+          useSafeZone: currentStyle.useSafeZone,
+          safeZoneFormat: currentStyle.safeZoneFormat
+        },
+        format
+      )
+
+      if (currentStyle.showSafeZoneOverlay && currentStyle.useSafeZone) {
+        const safeZone = loadSafeZone(format)
+        if (safeZone) {
+          const scaleX = cssW / safeZone.canvas[0]
+          const scaleY = cssH / safeZone.canvas[1]
+          ctx.save()
+          ctx.scale(scaleX, scaleY)
+          drawSafeZoneOverlay(ctx, safeZone, true)
+          ctx.restore()
+        }
+      }
+    },
+    [
+      caption,
+      currentStyle.fontChoice,
+      currentStyle.fontSize,
+      currentStyle.horizontalAlignment,
+      currentStyle.lineSpacing,
+      currentStyle.outlineColor,
+      currentStyle.outlinePx,
+      currentStyle.textRotation,
+      currentStyle.useSafeZone,
+      currentStyle.verticalAlignment,
+      currentStyle.xOffset,
+      currentStyle.yOffset,
+      currentStyle.safeZoneFormat,
+      globalSettings.safeZoneFormat,
+      slide.format
+    ]
+  )
+
+// No need for manual renderPreview calls - the canvas hook handles it automatically
 
   const handleSave = () => {
     const updatedSlide = {
@@ -143,7 +218,13 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
       rotateBg180,
       flipH,
       overrideCenterPx,
-      styleOverride: useStyleOverride ? currentStyle : {},
+      styleOverride: useStyleOverride
+        ? {
+            ...currentStyle,
+            backgroundType,
+            backgroundColor
+          }
+        : undefined,
     }
     onSave(updatedSlide)
   }
@@ -178,8 +259,12 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
           {/* Left: Preview */}
           <div className="flex flex-col items-center justify-center bg-surface2 rounded-lg p-4" style={{ backgroundColor: colors.surface2 }}>
             <div 
-              className="relative w-full h-full rounded-lg border border-border cursor-grab active:cursor-grabbing overflow-hidden"
-              style={{ aspectRatio: slide.format === '3:4' ? '3/4' : '9/16' }}
+              className="relative rounded-lg border border-border cursor-grab active:cursor-grabbing overflow-hidden"
+              style={{
+                width: previewDimensions.width,
+                height: previewDimensions.height,
+                backgroundColor: '#000000'
+              }}
               onMouseDown={(e) => {
                 if (e.button === 0) { // Left click
                   setIsDragging(true)
@@ -200,15 +285,19 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
               }}
               onMouseUp={() => setIsDragging(false)}
               onMouseLeave={() => setIsDragging(false)}
-            >
-              <SlideEditorCanvas
-                src={slide.image}
-                bgColor="#000000"
-                className="w-full h-full"
-                drawOverlay={drawTextOverlay}
-                priority="high"
-              />
-            </div>
+              >
+                <SlideEditorCanvas
+                  src={slide.image}
+                  bgColor={currentBackgroundType === 'solid' ? currentBackgroundColor || '#000000' : '#000000'}
+                  className="absolute inset-0"
+                  cssSize={previewDimensions}
+                  exportSize={exportDimensions}
+                  dpr={previewDpr}
+                  drawOverlay={drawTextOverlay}
+                  priority="high"
+                  imageTransform={imageTransform}
+                />
+              </div>
             <div className="mt-4 flex items-center gap-4 text-sm" style={{ color: colors.textMuted }}>
               <div className="flex items-center gap-1">
                 <Move size={16} />
@@ -421,7 +510,33 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
                       style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }}
                     />
                   </div>
-                  
+
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Background Type</label>
+                    <select
+                      value={backgroundType}
+                      onChange={(e) => setBackgroundType(e.target.value as 'image' | 'solid')}
+                      className="w-full p-2 rounded-md border text-sm"
+                      style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }}
+                    >
+                      <option value="image">Image</option>
+                      <option value="solid">Solid Color</option>
+                    </select>
+                  </div>
+
+                  {backgroundType === 'solid' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: colors.textMuted }}>Background Color</label>
+                      <input
+                        type="color"
+                        value={backgroundColor}
+                        onChange={(e) => setBackgroundColor(e.target.value)}
+                        className="w-full h-10 rounded border"
+                        style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+                      />
+                    </div>
+                  )}
+
                   <div className="col-span-2 space-y-2">
                     <label className="flex items-center text-sm cursor-pointer" style={{ color: colors.text }}>
                       <input
@@ -497,3 +612,6 @@ export const SlideEditor: React.FC<SlideEditorProps> = ({
     </div>
   )
 }
+
+
+
