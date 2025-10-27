@@ -591,6 +591,7 @@ export function GeneratePage() {
   const [generatedIdeas, setGeneratedIdeas] = useState<Array<{
     ideaId: number
     ideaText: string
+    sheetName?: string | null // Track which sheet this idea came from
     slides: Array<{
       id: string
       caption: string
@@ -1092,39 +1093,99 @@ export function GeneratePage() {
 
       console.log(`?? Creating ZIP with ${generatedIdeas.length} ideas...`)
 
-      for (const idea of generatedIdeas) {
-        const ideaFolder = zip.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
-        if (!ideaFolder) continue
+      // Group ideas by sheet for multi-sheet exports
+      const hasMultipleSheets = generatedIdeas.some(idea => idea.sheetName) && 
+                                 new Set(generatedIdeas.map(idea => idea.sheetName)).size > 1
 
-        for (let i = 0; i < idea.slides.length; i++) {
-          const slide = idea.slides[i]
-          if (!slide.renderConfig) {
-            console.warn(`Slide ${slide.id} has no render config, skipping export`)
-            continue
+      if (hasMultipleSheets) {
+        // Multi-sheet export: organize by sheet folders
+        const sheetGroups = new Map<string, typeof generatedIdeas>()
+        
+        for (const idea of generatedIdeas) {
+          const sheetName = idea.sheetName || 'unsorted'
+          if (!sheetGroups.has(sheetName)) {
+            sheetGroups.set(sheetName, [])
           }
+          sheetGroups.get(sheetName)!.push(idea)
+        }
 
-          const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
+        for (const [sheetName, ideas] of sheetGroups) {
+          const sheetFolder = zip.folder(sheetName)
+          if (!sheetFolder) continue
 
-          try {
-            const canvas = await renderSlideToCanvas({
-              slide: slide.renderConfig.slide,
-              caption: slide.renderConfig.caption,
-              scale: 1,
-              dpr: 1
-            })
+          for (const idea of ideas) {
+            const ideaFolder = sheetFolder.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
+            if (!ideaFolder) continue
 
-            const blob = await new Promise<Blob | null>(resolve =>
-              canvas.toBlob(resolve, 'image/png', 1)
-            )
+            for (let i = 0; i < idea.slides.length; i++) {
+              const slide = idea.slides[i]
+              if (!slide.renderConfig) {
+                console.warn(`Slide ${slide.id} has no render config, skipping export`)
+                continue
+              }
 
-            if (!blob) {
-              console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
+              const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
+
+              try {
+                const canvas = await renderSlideToCanvas({
+                  slide: slide.renderConfig.slide,
+                  caption: slide.renderConfig.caption,
+                  scale: 1,
+                  dpr: 1
+                })
+
+                const blob = await new Promise<Blob | null>(resolve =>
+                  canvas.toBlob(resolve, 'image/png', 1)
+                )
+
+                if (!blob) {
+                  console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
+                  continue
+                }
+
+                ideaFolder.file(fileName, blob)
+              } catch (error) {
+                console.error(`Failed to export slide ${slide.id}:`, error)
+              }
+            }
+          }
+        }
+      } else {
+        // Single-sheet export: flat structure (backward compatible)
+        for (const idea of generatedIdeas) {
+          const ideaFolder = zip.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
+          if (!ideaFolder) continue
+
+          for (let i = 0; i < idea.slides.length; i++) {
+            const slide = idea.slides[i]
+            if (!slide.renderConfig) {
+              console.warn(`Slide ${slide.id} has no render config, skipping export`)
               continue
             }
 
-            ideaFolder.file(fileName, blob)
-          } catch (error) {
-            console.error(`Failed to export slide ${slide.id}:`, error)
+            const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
+
+            try {
+              const canvas = await renderSlideToCanvas({
+                slide: slide.renderConfig.slide,
+                caption: slide.renderConfig.caption,
+                scale: 1,
+                dpr: 1
+              })
+
+              const blob = await new Promise<Blob | null>(resolve =>
+                canvas.toBlob(resolve, 'image/png', 1)
+              )
+
+              if (!blob) {
+                console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
+                continue
+              }
+
+              ideaFolder.file(fileName, blob)
+            } catch (error) {
+              console.error(`Failed to export slide ${slide.id}:`, error)
+            }
           }
         }
       }
