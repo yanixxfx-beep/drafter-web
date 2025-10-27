@@ -1435,6 +1435,8 @@ export function GeneratePage() {
       </div>
     </div>
   )
+  }
+
   const renderStep2_5 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -1578,7 +1580,7 @@ export function GeneratePage() {
         </div>
       )}
     </div>
-  );
+  )
 
   // Helper function to get format label for an idea
   const getIdeaFormatLabel = (idea: typeof generatedIdeas[0]) => {
