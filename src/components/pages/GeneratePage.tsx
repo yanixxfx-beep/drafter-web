@@ -247,7 +247,8 @@ export function GeneratePage() {
       case 1:
         return true
       case 2:
-        return !!(step1Data?.spreadsheetId && step1Data?.sheetName)
+        // Allow if single sheet OR multi-sheet selection
+        return !!(step1Data?.spreadsheetId && (step1Data?.sheetName || (step1Data?.selectedSheets && step1Data.selectedSheets.length > 0)))
       case 3:
         return !!(step1Data?.ideas?.length && step2Data)
       case 4:
