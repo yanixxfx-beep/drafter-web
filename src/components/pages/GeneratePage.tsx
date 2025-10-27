@@ -1580,7 +1580,7 @@ export function GeneratePage() {
         </div>
       )}
     </div>
-  );
+  )
 
   // Helper function to get format label for an idea
   const getIdeaFormatLabel = (idea: typeof generatedIdeas[0]) => {
