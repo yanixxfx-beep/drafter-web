@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import AnimatedList from '@/components/ui/AnimatedList'
 import { GlowingEffect } from '@/components/ui/GlowingEffect'
 import SlideEditorCanvas from '@/components/SlideEditorCanvas'
@@ -62,6 +63,30 @@ export default function Step3Pane({
   exportAllDraftsAsZIP,
   drawCaption
 }: Step3PaneProps) {
+  
+  // Group ideas by sheet if multi-sheet mode
+  const groupedIdeas = React.useMemo(() => {
+    if (!step1Data?.selectedSheets || step1Data.selectedSheets.length <= 1) {
+      // Single sheet or legacy mode - return flat structure
+      return { _default: generatedIdeas }
+    }
+    
+    // Multi-sheet mode - group by sheetName
+    const grouped: Record<string, typeof generatedIdeas> = {}
+    generatedIdeas.forEach(idea => {
+      const sheetKey = idea.sheetName || '_default'
+      if (!grouped[sheetKey]) {
+        grouped[sheetKey] = []
+      }
+      grouped[sheetKey].push(idea)
+    })
+    
+    return grouped
+  }, [generatedIdeas, step1Data?.selectedSheets])
+
+  const sheetNames = Object.keys(groupedIdeas)
+  const isMultiSheet = step1Data?.selectedSheets && step1Data.selectedSheets.length > 1
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -150,8 +175,23 @@ export default function Step3Pane({
               </div>
             </div>
           ) : (
-            <AnimatedList
-              items={generatedIdeas.map((idea) => (
+            <div className="space-y-8">
+              {sheetNames.map((sheetKey) => (
+                <div key={sheetKey}>
+                  {/* Sheet Header - only show if multi-sheet */}
+                  {isMultiSheet && sheetKey !== '_default' && (
+                    <div className="mb-4 pb-2 border-b" style={{ borderColor: colors.border }}>
+                      <h3 className="text-lg font-semibold" style={{ color: colors.text }}>
+                        {sheetKey}
+                      </h3>
+                      <p className="text-sm" style={{ color: colors.textMuted }}>
+                        {groupedIdeas[sheetKey].length} ideas from this sheet
+                      </p>
+                    </div>
+                  )}
+                  
+                  <AnimatedList
+                    items={groupedIdeas[sheetKey].map((idea) => (
                 <div
                   key={idea.ideaId}
                   className="rounded-lg border relative cursor-pointer transition-all duration-200"
@@ -321,7 +361,10 @@ export default function Step3Pane({
               showGradients={true}
               enableArrowNavigation={false}
               displayScrollbar={true}
-            />
+              />
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

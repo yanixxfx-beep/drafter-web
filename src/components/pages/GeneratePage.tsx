@@ -474,8 +474,13 @@ export function GeneratePage() {
         spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
         sheetName: sheetNames.length === 1 ? sheetNames[0] : '', // single sheet compat
         selectedSheets: sheetNames,
-        // Merge all ideas from all sheets for backward compat
-        ideas: sheetNames.flatMap(name => sheetsData[name]?.ideas || []),
+        // Merge all ideas from all sheets with sheet tracking
+        ideas: sheetNames.flatMap(name => 
+          (sheetsData[name]?.ideas || []).map((idea: any) => ({
+            ...idea,
+            _sheetName: name // Tag each idea with its source sheet
+          }))
+        ),
         slideColumns: Array.from(allSlideCols),
         sheetsData,
         summary: {
@@ -1623,7 +1628,8 @@ export function GeneratePage() {
             ideaId,
             ideaText: ideaTitle,
             slides,
-            isExpanded: false
+            isExpanded: false,
+            sheetName: rawIdea._sheetName || null // Track which sheet this idea came from
           })
         }
 
