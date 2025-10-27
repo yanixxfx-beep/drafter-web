@@ -1230,16 +1230,6 @@ export function GeneratePage() {
       (img) => img.category === 'ai-method'
     )
     
-    console.log('🔍 Image Category Debug:', {
-      totalImages: availableImages.length,
-      affiliateImages: affiliateImages.length,
-      aiMethodImages: aiMethodImages.length,
-      categoryBreakdown: availableImages.reduce((acc, img) => {
-        acc[img.category || 'undefined'] = (acc[img.category || 'undefined'] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-    })
-    
     // If no explicit categories, fall back to name-based filtering
     // (only if categories weren't set properly)
     const affiliateByFallback = affiliateImages.length === 0 
@@ -1248,11 +1238,6 @@ export function GeneratePage() {
     const aiMethodByFallback = aiMethodImages.length === 0
       ? availableImages.filter(img => img.name?.includes('ai-method'))
       : aiMethodImages
-      
-    console.log('🔍 Final Image Pools:', {
-      affiliateCount: affiliateByFallback.length,
-      aiMethodCount: aiMethodByFallback.length
-    })
 
     const shuffledAffiliate = [...affiliateByFallback]
     const shuffledAiMethod = [...aiMethodByFallback]
@@ -1288,23 +1273,18 @@ export function GeneratePage() {
 
         if (desiredSource === 'ai-method' && shuffledAiMethod.length > 0) {
           chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
-          console.log(`🎯 Idea ${idea.ideaId}, Slide ${idx + 1} (LAST): Assigned AI Method image - "${chosenImage.name}"`)
           aiMethodIndex++
         } else if (desiredSource === 'affiliate' && shuffledAffiliate.length > 0) {
           chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
-          console.log(`📸 Idea ${idea.ideaId}, Slide ${idx + 1}: Assigned Affiliate image - "${chosenImage.name}"`)
           affiliateIndex++
         } else if (shuffledAffiliate.length > 0) {
           chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
-          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Assigned Affiliate image - "${chosenImage.name}"`)
           affiliateIndex++
         } else if (shuffledAiMethod.length > 0) {
           chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
-          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Assigned AI Method image - "${chosenImage.name}"`)
           aiMethodIndex++
         } else if (availableImages.length > 0) {
           chosenImage = availableImages[(idea.ideaId + idx) % availableImages.length]
-          console.log(`⚠️ Final Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Assigned random image - "${chosenImage.name}"`)
         }
 
         let nextImageUrl = slide.image
@@ -1434,23 +1414,31 @@ export function GeneratePage() {
 
       const slideImageSource =
         slide.imageSource || (slideIndex === idea.slides.length - 1 ? 'ai-method' : 'affiliate')
+      
+      console.log(`🔄 Randomizing Idea ${idea.ideaId}, Slide ${slideIndex + 1} (source: ${slideImageSource})`)
 
-      let availableForSelection = availableImages.filter(img => {
-        const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
-        const isAiMethod = img.category === 'ai-method' || img.name?.includes('ai-method')
-
-        return slideImageSource === 'ai-method' ? isAiMethod : isAffiliate
-      })
+      // Filter images by explicit category first (same logic as assignImagesToIdeas)
+      const affiliateImages = availableImages.filter(img => img.category === 'affiliate')
+      const aiMethodImages = availableImages.filter(img => img.category === 'ai-method')
+      
+      // If no explicit categories, fall back to name-based filtering
+      const affiliateByFallback = affiliateImages.length === 0 
+        ? availableImages.filter(img => !img.name?.includes('ai-method') && !img.category) 
+        : affiliateImages
+      const aiMethodByFallback = aiMethodImages.length === 0
+        ? availableImages.filter(img => img.name?.includes('ai-method'))
+        : aiMethodImages
+      
+      let availableForSelection = slideImageSource === 'ai-method' ? aiMethodByFallback : affiliateByFallback
+      
+      console.log(`📊 Available pools: Affiliate=${affiliateByFallback.length}, AI Method=${aiMethodByFallback.length}, Selected=${availableForSelection.length}`)
 
       availableForSelection = availableForSelection.filter(img => !usedImages.has(img.id))
 
       if (availableForSelection.length === 0) {
+        console.log('⚠️ No unused images, resetting usedImages and using full pool')
         setUsedImages(new Set())
-        availableForSelection = availableImages.filter(img => {
-          const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
-          const isAiMethod = img.category === 'ai-method' || img.name?.includes('ai-method')
-          return slideImageSource === 'ai-method' ? isAiMethod : isAffiliate
-        })
+        availableForSelection = slideImageSource === 'ai-method' ? aiMethodByFallback : affiliateByFallback
       }
 
       availableForSelection = availableForSelection.filter(img => img.url !== slide.image)
