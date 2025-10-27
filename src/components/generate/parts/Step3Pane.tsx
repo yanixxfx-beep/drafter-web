@@ -64,6 +64,9 @@ export default function Step3Pane({
   drawCaption
 }: Step3PaneProps) {
   
+  // State for selected sheet in multi-sheet mode
+  const [selectedSheet, setSelectedSheet] = React.useState<string | null>(null)
+  
   // Group ideas by sheet if multi-sheet mode
   const groupedIdeas = React.useMemo(() => {
     if (!step1Data?.selectedSheets || step1Data.selectedSheets.length <= 1) {
@@ -86,6 +89,24 @@ export default function Step3Pane({
 
   const sheetNames = Object.keys(groupedIdeas)
   const isMultiSheet = step1Data?.selectedSheets && step1Data.selectedSheets.length > 1
+  
+  // Initialize selected sheet to first sheet
+  React.useEffect(() => {
+    if (isMultiSheet && selectedSheet === null && sheetNames.length > 0) {
+      setSelectedSheet(sheetNames[0])
+    }
+  }, [isMultiSheet, selectedSheet, sheetNames])
+  
+  // Get current ideas to display (either filtered by sheet or all ideas)
+  const currentIdeas = React.useMemo(() => {
+    if (!isMultiSheet) {
+      return generatedIdeas
+    }
+    if (!selectedSheet) {
+      return []
+    }
+    return groupedIdeas[selectedSheet] || []
+  }, [isMultiSheet, selectedSheet, groupedIdeas, generatedIdeas])
 
   return (
     <div className="space-y-6">
@@ -98,12 +119,38 @@ export default function Step3Pane({
         </p>
       </div>
 
+      {/* Sheet Selector - only show for multi-sheet mode */}
+      {isMultiSheet && sheetNames.length > 1 && (
+        <div className="mb-4">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {sheetNames.map((sheetName) => (
+              <button
+                key={sheetName}
+                onClick={() => setSelectedSheet(sheetName)}
+                className="px-4 py-2 rounded-lg border flex-shrink-0 text-sm font-medium transition-all"
+                style={{
+                  backgroundColor: selectedSheet === sheetName ? colors.accent : colors.surface,
+                  borderColor: selectedSheet === sheetName ? colors.accent : colors.border,
+                  color: selectedSheet === sheetName ? 'white' : colors.text
+                }}
+              >
+                {sheetName}
+                <span className="ml-2 opacity-70">
+                  ({groupedIdeas[sheetName]?.length || 0})
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Slides Grid */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold" style={{ color: colors.text }}>
-              Generated Ideas ({generatedIdeas.length})
+              Generated Ideas ({currentIdeas.length})
+              {isMultiSheet && selectedSheet && ` from ${selectedSheet}`}
             </h3>
             <div className="flex items-center gap-2">
               {generatedIdeas.length > 0 && (
@@ -175,23 +222,9 @@ export default function Step3Pane({
               </div>
             </div>
           ) : (
-            <div className="space-y-8">
-              {sheetNames.map((sheetKey) => (
-                <div key={sheetKey}>
-                  {/* Sheet Header - only show if multi-sheet */}
-                  {isMultiSheet && sheetKey !== '_default' && (
-                    <div className="mb-4 pb-2 border-b" style={{ borderColor: colors.border }}>
-                      <h3 className="text-lg font-semibold" style={{ color: colors.text }}>
-                        {sheetKey}
-                      </h3>
-                      <p className="text-sm" style={{ color: colors.textMuted }}>
-                        {groupedIdeas[sheetKey].length} ideas from this sheet
-                      </p>
-                    </div>
-                  )}
-                  
-                  <AnimatedList
-                    items={groupedIdeas[sheetKey].map((idea) => (
+            <div className="space-y-4">
+              <AnimatedList
+                items={currentIdeas.map((idea) => (
                 <div
                   key={idea.ideaId}
                   className="rounded-lg border relative cursor-pointer transition-all duration-200"
@@ -362,8 +395,6 @@ export default function Step3Pane({
               enableArrowNavigation={false}
               displayScrollbar={true}
               />
-                </div>
-              ))}
             </div>
           )}
         </div>
