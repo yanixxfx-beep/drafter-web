@@ -68,7 +68,12 @@ export default function Step2Pane({
   const drawOverlay = useCallback(
     (ctx: CanvasRenderingContext2D, cssW: number, cssH: number, _dpr: number) => {
       if (currentCaption) {
-        drawCaption(ctx, currentCaption, cssW, cssH, format)
+        const scaleX = cssW / exportSize.width
+        const scaleY = cssH / exportSize.height
+        ctx.save()
+        ctx.scale(scaleX, scaleY)
+        drawCaption(ctx, currentCaption, exportSize.width, exportSize.height, format)
+        ctx.restore()
       }
 
       if (step2Data?.showSafeZoneOverlay && step2Data?.useSafeZone) {

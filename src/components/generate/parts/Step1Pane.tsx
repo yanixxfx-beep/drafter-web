@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { UserIcon } from '@/components/ui/Icon'
 
 interface Step1PaneProps {
@@ -12,6 +13,7 @@ interface Step1PaneProps {
   handleSpreadsheetSelect: (value: string) => void
   availableSheets: string[]
   handleSheetSelect: (value: string) => void
+  handleMultiSheetSelect?: (values: string[]) => void
   signIn: (provider: string) => void
 }
 
@@ -25,8 +27,44 @@ export default function Step1Pane({
   handleSpreadsheetSelect,
   availableSheets,
   handleSheetSelect,
+  handleMultiSheetSelect,
   signIn
 }: Step1PaneProps) {
+  const [selectedSheets, setSelectedSheets] = useState<string[]>(step1Data?.selectedSheets || [])
+  const [useMultiSelect, setUseMultiSelect] = useState(false)
+
+  const handleSheetToggle = (sheetName: string) => {
+    if (useMultiSelect) {
+      const newSelection = selectedSheets.includes(sheetName)
+        ? selectedSheets.filter(s => s !== sheetName)
+        : [...selectedSheets, sheetName]
+      setSelectedSheets(newSelection)
+      if (handleMultiSheetSelect) {
+        handleMultiSheetSelect(newSelection)
+      }
+    } else {
+      // Single select mode - use old handler
+      handleSheetSelect(sheetName)
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (useMultiSelect) {
+      const allSelected = selectedSheets.length === availableSheets.length
+      if (allSelected) {
+        setSelectedSheets([])
+        if (handleMultiSheetSelect) {
+          handleMultiSheetSelect([])
+        }
+      } else {
+        setSelectedSheets([...availableSheets])
+        if (handleMultiSheetSelect) {
+          handleMultiSheetSelect(availableSheets)
+        }
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -202,34 +240,84 @@ export default function Step1Pane({
                   borderColor: colors.border 
                 }}
               >
-                  <label htmlFor="sheet-select" className="block text-lg font-semibold mb-4" style={{ color: colors.text }}>
-                  Select Day Sheet
+                <div className="flex items-center justify-between mb-4">
+                  <label className="block text-lg font-semibold" style={{ color: colors.text }}>
+                    Select Day Sheets
                   </label>
-                
-                <select
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useMultiSelect}
+                      onChange={(e) => setUseMultiSelect(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                      style={{ accentColor: colors.accent }}
+                    />
+                    <span style={{ color: colors.textMuted }}>Select Multiple</span>
+                  </label>
+                </div>
+
+                {useMultiSelect ? (
+                  // Multi-select with checkboxes
+                  <div className="space-y-2">
+                    {availableSheets.length > 1 && (
+                      <button
+                        onClick={handleSelectAll}
+                        className="w-full py-2 px-3 rounded-lg border text-sm font-medium transition-all"
+                        style={{
+                          backgroundColor: colors.surface2,
+                          borderColor: colors.border,
+                          color: colors.text
+                        }}
+                      >
+                        {selectedSheets.length === availableSheets.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    )}
+                    <div className="space-y-2">
+                      {availableSheets.map((sheet) => (
+                        <label
+                          key={sheet}
+                          className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:opacity-80 transition-all"
+                          style={{ backgroundColor: colors.surface2 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedSheets.includes(sheet)}
+                            onChange={() => handleSheetToggle(sheet)}
+                            className="w-5 h-5 rounded"
+                            style={{ accentColor: colors.accent }}
+                          />
+                          <span style={{ color: colors.text }}>{sheet}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  // Single select dropdown (backward compatible)
+                  <select
                     id="sheet-select"
                     name="sheetName"
-                  value={step1Data?.sheetName || ''}
-                  onChange={(e) => handleSheetSelect(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border"
-                  style={{ 
-                    backgroundColor: colors.surface2, 
-                    borderColor: colors.border, 
-                    color: colors.text 
-                  }}
-                >
-                  <option value="">Select a sheet...</option>
-                  {availableSheets.map((sheet) => (
-                    <option key={sheet} value={sheet}>
-                      {sheet}
-                    </option>
-                  ))}
-                </select>
+                    value={step1Data?.sheetName || ''}
+                    onChange={(e) => handleSheetSelect(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border"
+                    style={{ 
+                      backgroundColor: colors.surface2, 
+                      borderColor: colors.border, 
+                      color: colors.text 
+                    }}
+                  >
+                    <option value="">Select a sheet...</option>
+                    {availableSheets.map((sheet) => (
+                      <option key={sheet} value={sheet}>
+                        {sheet}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
 
             {/* Summary */}
-            {step1Data?.sheetName && (
+            {((step1Data?.sheetName && !useMultiSelect) || (useMultiSelect && selectedSheets.length > 0)) && (
               <div 
                 className="p-6 rounded-lg border"
                 style={{ 
@@ -261,7 +349,15 @@ export default function Step1Pane({
                 <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: colors.surface2 }}>
                   <p className="text-sm" style={{ color: colors.textMuted }}>
                     <strong>Spreadsheet:</strong> {step1Data.spreadsheetName}<br />
-                    <strong>Sheet:</strong> {step1Data.sheetName}<br />
+                    {useMultiSelect ? (
+                      <>
+                        <strong>Selected Sheets ({selectedSheets.length}):</strong> {selectedSheets.join(', ')}<br />
+                      </>
+                    ) : (
+                      <>
+                        <strong>Sheet:</strong> {step1Data.sheetName}<br />
+                      </>
+                    )}
                     <strong>Note:</strong> Content images will be pulled from your Content page.
                   </p>
                 </div>
