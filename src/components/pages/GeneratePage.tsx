@@ -1705,6 +1705,7 @@ export function GeneratePage() {
     const startTime = performance.now()
     const baseIdeas: typeof generatedIdeas = []
     let globalSlideCounter = 0
+    let completedIdeas = 0
     
     // Track ideaId per sheet for independent numbering
     const sheetCounters = new Map<string, number>()
