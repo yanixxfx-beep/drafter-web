@@ -1999,8 +1999,7 @@ export function GeneratePage() {
       }
 
       // Only assign images if not already done (multi-sheet mode already assigns per sheet)
-      const isMultiSheet = step1Data.selectedSheets && step1Data.selectedSheets.length > 1
-      
+      // isMultiSheet is already defined above at line 1739
       if (!isMultiSheet) {
         // Single-sheet mode: assign images now
         const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(baseIdeas)
