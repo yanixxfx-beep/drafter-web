@@ -1266,8 +1266,9 @@ export function GeneratePage() {
 
       for (let idx = 0; idx < idea.slides.length; idx++) {
         const slide = idea.slides[idx]
-        const isLastSlide = idx === totalSlides - 1
-        const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
+        // Respect existing imageSource if set, otherwise determine from slide index
+        const desiredSource: 'affiliate' | 'ai-method' = slide.imageSource || 
+          (idx === totalSlides - 1 ? 'ai-method' : 'affiliate')
 
         let chosenImage: AvailableImage | undefined
 
