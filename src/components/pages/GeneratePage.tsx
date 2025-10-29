@@ -1242,12 +1242,13 @@ export function GeneratePage() {
     }
   }
 
-  const assignImagesToIdeas = useCallback(async (ideas: typeof generatedIdeas) => {
+  const assignImagesToIdeas = useCallback(async (ideas: typeof generatedIdeas, seed?: string) => {
     console.log('🎨 ASSIGN IMAGES DEBUG')
     console.log('📊 Input ideas:', {
       count: ideas.length,
       sheets: [...new Set(ideas.map(idea => idea.sheetName))],
-      totalSlides: ideas.reduce((sum, idea) => sum + idea.slides.length, 0)
+      totalSlides: ideas.reduce((sum, idea) => sum + idea.slides.length, 0),
+      seed: seed || 'default'
     })
 
     if (!step2Data) {
@@ -1281,15 +1282,36 @@ export function GeneratePage() {
     const shuffledAffiliate = [...affiliateByFallback]
     const shuffledAiMethod = [...aiMethodByFallback]
 
-    for (let i = shuffledAffiliate.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffledAffiliate[i], shuffledAffiliate[j]] = [shuffledAffiliate[j], shuffledAffiliate[i]]
+    // Use seeded shuffle if seed is provided, otherwise use Math.random()
+    const shuffleFunction = (arr: any[]) => {
+      if (seed) {
+        // Simple seeded shuffle using the seed
+        let hash = 0
+        for (let i = 0; i < seed.length; i++) {
+          hash = ((hash << 5) - hash) + seed.charCodeAt(i)
+          hash = hash & hash // Convert to 32bit integer
+        }
+        
+        const rng = () => {
+          hash = ((hash << 5) - hash) + seed.length
+          hash = hash & hash
+          return Math.abs(hash) / 2147483648
+        }
+        
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1))
+          ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+      } else {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        }
+      }
     }
-
-    for (let i = shuffledAiMethod.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffledAiMethod[i], shuffledAiMethod[j]] = [shuffledAiMethod[j], shuffledAiMethod[i]]
-    }
+    
+    shuffleFunction(shuffledAffiliate)
+    shuffleFunction(shuffledAiMethod)
 
     let affiliateIndex = 0
     let aiMethodIndex = 0
@@ -1717,8 +1739,10 @@ export function GeneratePage() {
       const isMultiSheet = step1Data.selectedSheets && step1Data.selectedSheets.length > 1
       
       if (isMultiSheet && step1Data.sheetsData) {
-        // Multi-sheet mode: Process each sheet independently
+        // Multi-sheet mode: Process each sheet independently with per-sheet image assignment
+        const runId = new Date().toISOString()
         console.log('🌐 Multi-sheet mode: Processing sheets independently')
+        console.log('🚀 RUN ID:', runId)
         
         for (const [sheetName, sheetData] of Object.entries(step1Data.sheetsData)) {
           const slideColumns = sheetData.slideColumns || []
@@ -1729,8 +1753,10 @@ export function GeneratePage() {
           }
 
           const ideas = sheetData.ideas || []
-          
           console.log(`📊 Processing sheet "${sheetName}": ${ideas.length} ideas`)
+          
+          // PER-SHEET STATE: All variables scoped to this sheet
+          const sheetCompletedIdeas: typeof generatedIdeas = []
           
           // Process this sheet's ideas independently
           ideas.forEach((rawIdea, idx) => {
@@ -1752,7 +1778,6 @@ export function GeneratePage() {
             const ideaId = idx + 1
             
             const ideaPlan = getIdeaFormatPlan(idx, ideas.length) // Use sheet's idea count, not total
-            const ideaIndex = baseIdeas.length
             const slides: typeof generatedIdeas[0]['slides'] = []
 
             slideEntries.forEach((entry, slideIdx) => {
@@ -1763,7 +1788,7 @@ export function GeneratePage() {
                   ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
                   : (ideaPlan as '9:16' | '3:4')
 
-              const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
+              const slideId = `${sheetName}-idea-${ideaId}-slide-${slideIdx + 1}`
               
               console.log(`  📄 ${sheetName} Slide ${slideIdx + 1}/${slideEntries.length}:`, {
                 slideId,
@@ -1804,7 +1829,7 @@ export function GeneratePage() {
             const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `${sheetName} Idea ${ideaId}`)
 
             if (slides.length > 0) {
-              baseIdeas.push({
+              sheetCompletedIdeas.push({
                 ideaId,
                 ideaText: ideaTitle,
                 slides,
@@ -1821,7 +1846,51 @@ export function GeneratePage() {
             progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - completedIdeas)))
             setGenerationProgress({ ...progressState })
           })
+          
+          // Add this sheet's ideas to the base ideas
+          baseIdeas.push(...sheetCompletedIdeas)
+          
+          console.log(`✅ Completed ${sheetName}: ${sheetCompletedIdeas.length} ideas with ${sheetCompletedIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)} slides`)
         }
+        
+        // Now assign images to each sheet's ideas with per-sheet seeding
+        console.log('🎨 Assigning images per sheet with unique seeds')
+        const updatedIdeasArray: typeof generatedIdeas = []
+        let allThumbJobs: Array<{ slideId: string; renderConfig: SlideRenderConfig }> = []
+        let allOldThumbUrls: string[] = []
+        let allNewUsedImageIds = new Set<string>()
+        
+        for (const [sheetName, sheetData] of Object.entries(step1Data.sheetsData)) {
+          const sheetIdeas = baseIdeas.filter(idea => idea.sheetName === sheetName)
+          if (sheetIdeas.length === 0) continue
+          
+          const sheetSeed = `${runId}:${sheetName}`
+          console.log(`🎨 Assigning images for ${sheetName} with seed: ${sheetSeed}`)
+          
+          const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(sheetIdeas, sheetSeed)
+          
+          updatedIdeasArray.push(...updatedIdeas)
+          allThumbJobs.push(...thumbJobs)
+          allOldThumbUrls.push(...oldThumbUrls)
+          newUsedImageIds.forEach(id => allNewUsedImageIds.add(id))
+        }
+        
+        setGeneratedIdeas(updatedIdeasArray)
+        setUsedImages(allNewUsedImageIds)
+        allThumbJobs.forEach((job) => queueThumbnailForSlide(job.slideId, job.renderConfig))
+        allOldThumbUrls.forEach((url) => {
+          try {
+            URL.revokeObjectURL(url)
+          } catch (error) {
+            console.warn('Failed to revoke thumbnail URL', error)
+          }
+        })
+        
+        console.log('✅ All sheets processed with unique image assignments')
+        
+        setGenerationProgress(null)
+        setIsGeneratingDrafts(false)
+        return
       } else {
         // Single-sheet mode: Process merged ideas (backward compatibility)
         console.log('📄 Single-sheet mode: Processing merged ideas')
