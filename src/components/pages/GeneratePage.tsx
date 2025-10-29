@@ -1701,101 +1701,217 @@ export function GeneratePage() {
     console.log('🔄 Processing ideas...')
 
     try {
-      step1Data.ideas.forEach((rawIdea, idx) => {
-        console.log(`\n📝 Processing Idea ${idx + 1}:`, {
-          sheetName: rawIdea._sheetName,
-          ideaKeys: Object.keys(rawIdea),
-          sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
-        })
-        const slideEntries = slideColumns
-          .map((column) => {
-            const value = rawIdea?.[column]
-            const text = value === null || value === undefined ? '' : String(value).trim()
-            return { column, text }
-          })
-          .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
-
-        const sheetName = rawIdea._sheetName || 'default'
+      // Check if we have multi-sheet data
+      const isMultiSheet = step1Data.selectedSheets && step1Data.selectedSheets.length > 1
+      
+      if (isMultiSheet && step1Data.sheetsData) {
+        // Multi-sheet mode: Process each sheet independently
+        console.log('🌐 Multi-sheet mode: Processing sheets independently')
         
-        // Get or initialize counter for this sheet
-        if (!sheetCounters.has(sheetName)) {
-          sheetCounters.set(sheetName, 0)
-        }
-        const currentSheetCount = sheetCounters.get(sheetName)! + 1
-        sheetCounters.set(sheetName, currentSheetCount)
-        
-        // Use per-sheet counter for ideaId
-        const ideaId = currentSheetCount
-        
-        const ideaPlan = getIdeaFormatPlan(idx, totalIdeas)
-        const ideaIndex = baseIdeas.length
-        const slides: typeof generatedIdeas[0]['slides'] = []
-
-        slideEntries.forEach((entry, slideIdx) => {
-          const isLastSlide = slideIdx === slideEntries.length - 1
-          const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
-          const slideFormat =
-            ideaPlan === 'mixed'
-              ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
-              : (ideaPlan as '9:16' | '3:4')
-
-          const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
+        for (const [sheetName, sheetData] of Object.entries(step1Data.sheetsData)) {
+          const slideColumns = sheetData.slideColumns || []
           
-          console.log(`  📄 Slide ${slideIdx + 1}/${slideEntries.length}:`, {
-            slideId,
-            isLastSlide,
-            imageSource: desiredSource,
-            format: slideFormat,
-            caption: entry.text.substring(0, 50) + '...'
-          })
+          if (slideColumns.length === 0) {
+            console.warn(`No slide columns found for sheet ${sheetName}, skipping`)
+            continue
+          }
+
+          const ideas = sheetData.ideas || []
+          totalIdeas = totalIdeas + ideas.length
           
-          slides.push({
-            id: slideId,
-            caption: entry.text,
-            image: '',
-            renderConfig: buildRenderConfig(
-              null,
-              entry.text,
-              slideFormat,
-              step2Data
-            ),
-            thumbnail: null,
-            createdAt: new Date(),
-            slideNumber: slideIdx + 1,
-            imageSource: desiredSource,
-            format: slideFormat,
-            lastModified: Date.now(),
-            rotateBg180: false,
-            flipH: false,
-            styleOverride: undefined
-          })
+          console.log(`📊 Processing sheet "${sheetName}": ${ideas.length} ideas`)
+          
+          // Process this sheet's ideas independently
+          ideas.forEach((rawIdea, idx) => {
+            console.log(`\n📝 Processing ${sheetName} Idea ${idx + 1}:`, {
+              sheetName: rawIdea._sheetName || sheetName,
+              ideaKeys: Object.keys(rawIdea),
+              sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
+            })
+            
+            const slideEntries = slideColumns
+              .map((column) => {
+                const value = rawIdea?.[column]
+                const text = value === null || value === undefined ? '' : String(value).trim()
+                return { column, text }
+              })
+              .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
 
-          globalSlideCounter += 1
-          progressState.formats.push({
-            slide: globalSlideCounter,
-            format: slideFormat === '3:4' ? '3:4' : '9:16'
-          })
-        })
+            // Use per-sheet counter for ideaId (1-N per sheet)
+            const ideaId = idx + 1
+            
+            const ideaPlan = getIdeaFormatPlan(idx, ideas.length) // Use sheet's idea count, not total
+            const ideaIndex = baseIdeas.length
+            const slides: typeof generatedIdeas[0]['slides'] = []
 
-        const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `Idea ${ideaId}`)
+            slideEntries.forEach((entry, slideIdx) => {
+              const isLastSlide = slideIdx === slideEntries.length - 1
+              const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
+              const slideFormat =
+                ideaPlan === 'mixed'
+                  ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
+                  : (ideaPlan as '9:16' | '3:4')
 
-        if (slides.length > 0) {
-          baseIdeas.push({
-            ideaId,
-            ideaText: ideaTitle,
-            slides,
-            isExpanded: false,
-            sheetName: rawIdea._sheetName || null // Track which sheet this idea came from
+              const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
+              
+              console.log(`  📄 ${sheetName} Slide ${slideIdx + 1}/${slideEntries.length}:`, {
+                slideId,
+                isLastSlide,
+                imageSource: desiredSource,
+                format: slideFormat,
+                caption: entry.text.substring(0, 50) + '...'
+              })
+              
+              slides.push({
+                id: slideId,
+                caption: entry.text,
+                image: '',
+                renderConfig: buildRenderConfig(
+                  null,
+                  entry.text,
+                  slideFormat,
+                  step2Data
+                ),
+                thumbnail: null,
+                createdAt: new Date(),
+                slideNumber: slideIdx + 1,
+                imageSource: desiredSource,
+                format: slideFormat,
+                lastModified: Date.now(),
+                rotateBg180: false,
+                flipH: false,
+                styleOverride: undefined
+              })
+
+              globalSlideCounter += 1
+              progressState.formats.push({
+                slide: globalSlideCounter,
+                format: slideFormat === '3:4' ? '3:4' : '9:16'
+              })
+            })
+
+            const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `${sheetName} Idea ${ideaId}`)
+
+            if (slides.length > 0) {
+              baseIdeas.push({
+                ideaId,
+                ideaText: ideaTitle,
+                slides,
+                isExpanded: false,
+                sheetName: sheetName // Use the current sheet name
+              })
+            }
+
+            completedIdeas++
+            progressState.completed = completedIdeas
+            progressState.currentSlide = slides.length
+            const elapsedSeconds = (performance.now() - startTime) / 1000
+            const averagePerIdea = elapsedSeconds / completedIdeas
+            progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - completedIdeas)))
+            setGenerationProgress({ ...progressState })
           })
         }
+      } else {
+        // Single-sheet mode: Process merged ideas (backward compatibility)
+        console.log('📄 Single-sheet mode: Processing merged ideas')
+        
+        step1Data.ideas.forEach((rawIdea, idx) => {
+          console.log(`\n📝 Processing Idea ${idx + 1}:`, {
+            sheetName: rawIdea._sheetName,
+            ideaKeys: Object.keys(rawIdea),
+            sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
+          })
+          
+          const slideEntries = slideColumns
+            .map((column) => {
+              const value = rawIdea?.[column]
+              const text = value === null || value === undefined ? '' : String(value).trim()
+              return { column, text }
+            })
+            .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
 
-        progressState.completed = idx + 1
-        progressState.currentSlide = slides.length
-        const elapsedSeconds = (performance.now() - startTime) / 1000
-        const averagePerIdea = elapsedSeconds / (idx + 1)
-        progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - (idx + 1))))
-        setGenerationProgress({ ...progressState })
-      })
+          const sheetName = rawIdea._sheetName || 'default'
+          
+          // Get or initialize counter for this sheet
+          if (!sheetCounters.has(sheetName)) {
+            sheetCounters.set(sheetName, 0)
+          }
+          const currentSheetCount = sheetCounters.get(sheetName)! + 1
+          sheetCounters.set(sheetName, currentSheetCount)
+          
+          // Use per-sheet counter for ideaId
+          const ideaId = currentSheetCount
+          
+          const ideaPlan = getIdeaFormatPlan(idx, totalIdeas)
+          const ideaIndex = baseIdeas.length
+          const slides: typeof generatedIdeas[0]['slides'] = []
+
+          slideEntries.forEach((entry, slideIdx) => {
+            const isLastSlide = slideIdx === slideEntries.length - 1
+            const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
+            const slideFormat =
+              ideaPlan === 'mixed'
+                ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
+                : (ideaPlan as '9:16' | '3:4')
+
+            const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
+            
+            console.log(`  📄 Slide ${slideIdx + 1}/${slideEntries.length}:`, {
+              slideId,
+              isLastSlide,
+              imageSource: desiredSource,
+              format: slideFormat,
+              caption: entry.text.substring(0, 50) + '...'
+            })
+            
+            slides.push({
+              id: slideId,
+              caption: entry.text,
+              image: '',
+              renderConfig: buildRenderConfig(
+                null,
+                entry.text,
+                slideFormat,
+                step2Data
+              ),
+              thumbnail: null,
+              createdAt: new Date(),
+              slideNumber: slideIdx + 1,
+              imageSource: desiredSource,
+              format: slideFormat,
+              lastModified: Date.now(),
+              rotateBg180: false,
+              flipH: false,
+              styleOverride: undefined
+            })
+
+            globalSlideCounter += 1
+            progressState.formats.push({
+              slide: globalSlideCounter,
+              format: slideFormat === '3:4' ? '3:4' : '9:16'
+            })
+          })
+
+          const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `Idea ${ideaId}`)
+
+          if (slides.length > 0) {
+            baseIdeas.push({
+              ideaId,
+              ideaText: ideaTitle,
+              slides,
+              isExpanded: false,
+              sheetName: rawIdea._sheetName || null // Track which sheet this idea came from
+            })
+          }
+
+          progressState.completed = idx + 1
+          progressState.currentSlide = slides.length
+          const elapsedSeconds = (performance.now() - startTime) / 1000
+          const averagePerIdea = elapsedSeconds / (idx + 1)
+          progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - (idx + 1))))
+          setGenerationProgress({ ...progressState })
+        })
+      }
 
       if (baseIdeas.length === 0) {
         alert('No slides were generated. Please verify your spreadsheet content.')
