@@ -1888,9 +1888,7 @@ export function GeneratePage() {
         
         console.log('✅ All sheets processed with unique image assignments')
         
-        setGenerationProgress(null)
-        setIsGeneratingDrafts(false)
-        return
+        // Continue to image assignment and progress to Step 3
       } else {
         // Single-sheet mode: Process merged ideas (backward compatibility)
         console.log('📄 Single-sheet mode: Processing merged ideas')
@@ -1996,23 +1994,34 @@ export function GeneratePage() {
       if (baseIdeas.length === 0) {
         alert('No slides were generated. Please verify your spreadsheet content.')
         setGenerationProgress(null)
+        setIsGeneratingDrafts(false)
         return
       }
 
-      const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(baseIdeas)
+      // Only assign images if not already done (multi-sheet mode already assigns per sheet)
+      const isMultiSheet = step1Data.selectedSheets && step1Data.selectedSheets.length > 1
+      
+      if (!isMultiSheet) {
+        // Single-sheet mode: assign images now
+        const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(baseIdeas)
 
-      setGeneratedIdeas(updatedIdeas)
-      setUsedImages(newUsedImageIds)
-      thumbJobs.forEach((job) => queueThumbnailForSlide(job.slideId, job.renderConfig))
-      oldThumbUrls.forEach((url) => {
-        try {
-          URL.revokeObjectURL(url)
-        } catch (error) {
-          console.warn('Failed to revoke thumbnail URL', error)
-        }
-      })
+        setGeneratedIdeas(updatedIdeas)
+        setUsedImages(newUsedImageIds)
+        thumbJobs.forEach((job) => queueThumbnailForSlide(job.slideId, job.renderConfig))
+        oldThumbUrls.forEach((url) => {
+          try {
+            URL.revokeObjectURL(url)
+          } catch (error) {
+            console.warn('Failed to revoke thumbnail URL', error)
+          }
+        })
 
-      setSelectedDraft(updatedIdeas[0]?.slides[0]?.id ?? null)
+        setSelectedDraft(updatedIdeas[0]?.slides[0]?.id ?? null)
+      } else {
+        // Multi-sheet mode: images already assigned per sheet, just select first draft
+        setSelectedDraft(generatedIdeas[0]?.slides[0]?.id ?? null)
+      }
+
       setGenerationProgress(null)
       setCurrentStep(4)
     } catch (error) {
