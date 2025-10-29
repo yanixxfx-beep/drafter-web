@@ -428,6 +428,9 @@ export function GeneratePage() {
 
   // Multi-sheet selection handler
   const handleMultiSheetSelect = async (sheetNames: string[]) => {
+    console.log('📋 MULTI-SHEET SELECTION DEBUG')
+    console.log('🎯 Selected sheets:', sheetNames)
+    
     if (!selectedSpreadsheet) {
       return
     }
@@ -441,6 +444,7 @@ export function GeneratePage() {
       const allSlideCols = new Set<string>()
 
       for (const sheetName of sheetNames) {
+        console.log(`📥 Fetching sheet: ${sheetName}`)
         const response = await fetch('/api/sheets/read', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -459,6 +463,12 @@ export function GeneratePage() {
         const ideas = Array.isArray(data?.ideas) ? data.ideas : []
         const slideColumns = Array.isArray(data?.slideColumns) ? data.slideColumns : []
 
+        console.log(`📊 Sheet "${sheetName}" data:`, {
+          ideasCount: ideas.length,
+          slideColumns: slideColumns,
+          sampleIdea: ideas[0] ? Object.keys(ideas[0]) : []
+        })
+
         sheetsData[sheetName] = {
           sheetName,
           ideas,
@@ -469,18 +479,33 @@ export function GeneratePage() {
         slideColumns.forEach((col: string) => allSlideCols.add(col))
       }
 
+      const mergedIdeas = sheetNames.flatMap(name => 
+        (sheetsData[name]?.ideas || []).map((idea: any) => ({
+          ...idea,
+          _sheetName: name // Tag each idea with its source sheet
+        }))
+      )
+
+      console.log('🔄 MERGED DATA:', {
+        totalIdeas: mergedIdeas.length,
+        ideasPerSheet: sheetNames.map(name => ({
+          sheet: name,
+          count: sheetsData[name]?.ideas?.length || 0
+        })),
+        slideColumns: Array.from(allSlideCols),
+        sampleMergedIdeas: mergedIdeas.slice(0, 3).map(idea => ({
+          sheetName: idea._sheetName,
+          keys: Object.keys(idea)
+        }))
+      })
+
       setStep1Data({
         spreadsheetId: selectedSpreadsheet,
         spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
         sheetName: sheetNames.length === 1 ? sheetNames[0] : '', // single sheet compat
         selectedSheets: sheetNames,
         // Merge all ideas from all sheets with sheet tracking
-        ideas: sheetNames.flatMap(name => 
-          (sheetsData[name]?.ideas || []).map((idea: any) => ({
-            ...idea,
-            _sheetName: name // Tag each idea with its source sheet
-          }))
-        ),
+        ideas: mergedIdeas,
         slideColumns: Array.from(allSlideCols),
         sheetsData,
         summary: {
@@ -1218,6 +1243,13 @@ export function GeneratePage() {
   }
 
   const assignImagesToIdeas = useCallback(async (ideas: typeof generatedIdeas) => {
+    console.log('🎨 ASSIGN IMAGES DEBUG')
+    console.log('📊 Input ideas:', {
+      count: ideas.length,
+      sheets: [...new Set(ideas.map(idea => idea.sheetName))],
+      totalSlides: ideas.reduce((sum, idea) => sum + idea.slides.length, 0)
+    })
+
     if (!step2Data) {
       throw new Error('Step 2 settings are required for image assignment.')
     }
@@ -1229,6 +1261,13 @@ export function GeneratePage() {
     const aiMethodImages = availableImages.filter(
       (img) => img.category === 'ai-method'
     )
+    
+    console.log('🖼️ Image Categories:', {
+      total: availableImages.length,
+      affiliate: affiliateImages.length,
+      aiMethod: aiMethodImages.length,
+      uncategorized: availableImages.length - affiliateImages.length - aiMethodImages.length
+    })
     
     // If no explicit categories, fall back to name-based filtering
     // (only if categories weren't set properly)
@@ -1274,18 +1313,23 @@ export function GeneratePage() {
 
         if (desiredSource === 'ai-method' && shuffledAiMethod.length > 0) {
           chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
+          console.log(`🎯 Idea ${idea.ideaId}, Slide ${idx + 1} (LAST): AI Method - "${chosenImage.name}"`)
           aiMethodIndex++
         } else if (desiredSource === 'affiliate' && shuffledAffiliate.length > 0) {
           chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
+          console.log(`📸 Idea ${idea.ideaId}, Slide ${idx + 1}: Affiliate - "${chosenImage.name}"`)
           affiliateIndex++
         } else if (shuffledAffiliate.length > 0) {
           chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
+          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Affiliate - "${chosenImage.name}"`)
           affiliateIndex++
         } else if (shuffledAiMethod.length > 0) {
           chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
+          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: AI Method - "${chosenImage.name}"`)
           aiMethodIndex++
         } else if (availableImages.length > 0) {
           chosenImage = availableImages[(idea.ideaId + idx) % availableImages.length]
+          console.log(`⚠️ Final Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Random - "${chosenImage.name}"`)
         }
 
         let nextImageUrl = slide.image
@@ -1602,6 +1646,16 @@ export function GeneratePage() {
   }
 
   const startGeneration = useCallback(async () => {
+    console.log('🚀 START GENERATION DEBUG')
+    console.log('📊 Step1Data:', {
+      hasIdeas: !!step1Data?.ideas,
+      ideasCount: step1Data?.ideas?.length || 0,
+      selectedSheets: step1Data?.selectedSheets || [],
+      sheetsData: step1Data?.sheetsData ? Object.keys(step1Data.sheetsData) : [],
+      slideColumns: step1Data?.slideColumns || [],
+      summary: step1Data?.summary || {}
+    })
+
     if (!step1Data?.ideas || step1Data.ideas.length === 0) {
       alert('Please load ideas in Step 1 before generating drafts.')
       return
@@ -1623,6 +1677,8 @@ export function GeneratePage() {
       return
     }
 
+    console.log('📋 Slide Columns:', slideColumns)
+
     setIsGeneratingDrafts(true)
 
     const totalIdeas = step1Data.ideas.length
@@ -1642,8 +1698,15 @@ export function GeneratePage() {
     // Track ideaId per sheet for independent numbering
     const sheetCounters = new Map<string, number>()
 
+    console.log('🔄 Processing ideas...')
+
     try {
       step1Data.ideas.forEach((rawIdea, idx) => {
+        console.log(`\n📝 Processing Idea ${idx + 1}:`, {
+          sheetName: rawIdea._sheetName,
+          ideaKeys: Object.keys(rawIdea),
+          sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
+        })
         const slideEntries = slideColumns
           .map((column) => {
             const value = rawIdea?.[column]
@@ -1677,6 +1740,15 @@ export function GeneratePage() {
               : (ideaPlan as '9:16' | '3:4')
 
           const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
+          
+          console.log(`  📄 Slide ${slideIdx + 1}/${slideEntries.length}:`, {
+            slideId,
+            isLastSlide,
+            imageSource: desiredSource,
+            format: slideFormat,
+            caption: entry.text.substring(0, 50) + '...'
+          })
+          
           slides.push({
             id: slideId,
             caption: entry.text,
