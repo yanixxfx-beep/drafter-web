@@ -1681,7 +1681,18 @@ export function GeneratePage() {
 
     setIsGeneratingDrafts(true)
 
-    const totalIdeas = step1Data.ideas.length
+    // Calculate total ideas for multi-sheet mode
+    let totalIdeas = 0
+    if (step1Data.selectedSheets && step1Data.selectedSheets.length > 1 && step1Data.sheetsData) {
+      // Multi-sheet mode: sum ideas from all sheets
+      for (const sheetData of Object.values(step1Data.sheetsData)) {
+        totalIdeas += (sheetData.ideas || []).length
+      }
+    } else {
+      // Single-sheet mode: use merged ideas
+      totalIdeas = step1Data.ideas.length
+    }
+    
     const progressState = {
       completed: 0,
       total: totalIdeas,
@@ -1717,7 +1728,6 @@ export function GeneratePage() {
           }
 
           const ideas = sheetData.ideas || []
-          totalIdeas = totalIdeas + ideas.length
           
           console.log(`📊 Processing sheet "${sheetName}": ${ideas.length} ideas`)
           
