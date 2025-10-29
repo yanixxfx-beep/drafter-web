@@ -44,7 +44,7 @@ export default function TestAuthPage() {
   return (
     <div className="min-h-screen p-8" style={{ backgroundColor: '#0A0A0A' }}>
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8" style={{ color: colors.textPrimary }}>
+        <h1 className="text-3xl font-bold mb-8" style={{ color: colors.text }}>
           Authentication Test Page
         </h1>
 
@@ -57,7 +57,7 @@ export default function TestAuthPage() {
               borderColor: colors.border 
             }}
           >
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.textPrimary }}>
+            <h2 className="text-xl font-bold mb-4" style={{ color: colors.text }}>
               Session Status
             </h2>
             <div className="space-y-2">
@@ -76,7 +76,7 @@ export default function TestAuthPage() {
               borderColor: colors.border 
             }}
           >
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.textPrimary }}>
+            <h2 className="text-xl font-bold mb-4" style={{ color: colors.text }}>
               Auth Actions
             </h2>
             <div className="space-y-3">
@@ -114,7 +114,7 @@ export default function TestAuthPage() {
               borderColor: colors.border 
             }}
           >
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.textPrimary }}>
+            <h2 className="text-xl font-bold mb-4" style={{ color: colors.text }}>
               API Tests
             </h2>
             <div className="space-y-3">
@@ -124,7 +124,7 @@ export default function TestAuthPage() {
                 style={{
                   backgroundColor: 'transparent',
                   borderColor: colors.border,
-                  color: colors.textPrimary
+                  color: colors.text
                 }}
               >
                 Test Auth API
@@ -136,7 +136,7 @@ export default function TestAuthPage() {
                 style={{
                   backgroundColor: 'transparent',
                   borderColor: colors.border,
-                  color: colors.textPrimary
+                  color: colors.text
                 }}
               >
                 Test Upload API

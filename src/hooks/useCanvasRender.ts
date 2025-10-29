@@ -1,5 +1,6 @@
 // src/hooks/useCanvasRender.ts
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
 import { drawContain, loadBitmapFromUrl, loadHtmlImage, resetAndPaintBg, resizeCanvasToCss } from "@/utils/canvas";
 import { getOrCreateBitmap } from "@/utils/bitmapCache";
 import { getBlobForUrl } from "@/utils/blobCache";
@@ -114,3 +115,65 @@ export function useCanvasRender(canvas: HTMLCanvasElement | null, opts: RenderOp
     return () => { cancelled = true; ro.disconnect(); };
   }, [canvas, opts.src, opts.bgColor, opts.drawOverlay, opts.preferBitmap, opts.priority]);
 }
+
+export type CanvasRenderV2Options = {
+  canvasRef: RefObject<HTMLCanvasElement>
+  cssWidth: number
+  cssHeight: number
+  dpr?: number
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number) => Promise<void> | void
+  deps?: any[]
+}
+
+export function useCanvasRenderV2({ canvasRef, cssWidth, cssHeight, dpr, draw, deps = [] }: CanvasRenderV2Options) {
+  const tokenRef = useRef(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const token = ++tokenRef.current
+
+    const run = async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const _dpr = dpr ?? (globalThis.devicePixelRatio || 1)
+      if ((document as any).fonts?.ready) {
+        try {
+          await (document as any).fonts.ready
+        } catch {}
+      }
+
+      canvas.width = Math.max(1, Math.round(cssWidth * _dpr))
+      canvas.height = Math.max(1, Math.round(cssHeight * _dpr))
+      canvas.style.width = `${cssWidth}px`
+      canvas.style.height = `${cssHeight}px`
+
+      const ctx = canvas.getContext('2d', { alpha: true })
+      if (!ctx) return
+      ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0)
+      ctx.imageSmoothingEnabled = true
+      if ('imageSmoothingQuality' in ctx) {
+        ctx.imageSmoothingQuality = 'high'
+      }
+      ctx.textBaseline = 'alphabetic'
+      ctx.clearRect(0, 0, cssWidth, cssHeight)
+
+      const drawSnap = (value: number) => Math.round(value * _dpr) / _dpr
+      ;(ctx as any)._snap = drawSnap
+
+      if (!cancelled && tokenRef.current === token) {
+        await draw(ctx, cssWidth, cssHeight, _dpr)
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasRef, cssWidth, cssHeight, dpr, ...deps])
+}
+
+
+

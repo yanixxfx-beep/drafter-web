@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { useTheme } from '@/context/ThemeContext'
 import { StoredFile } from '@/lib/simpleStorage'
@@ -115,23 +115,12 @@ interface GoogleSheet {
   url: string
 }
 
-interface SheetData {
-  sheetName: string
-  ideas: any[]
-  slideColumns: string[]
-}
-
 interface Step1Data {
   spreadsheetId: string
   spreadsheetName: string
-  // Support both single sheet (backward compatible) and multi-sheet
-  sheetName: string // single sheet mode (kept for backward compat)
-  selectedSheets: string[] // new: array of selected sheet names
-  // Legacy single sheet data
+  sheetName: string
   ideas: any[]
   slideColumns: string[]
-  // New: multi-sheet data (sheetName -> SheetData)
-  sheetsData: Record<string, SheetData>
   summary: {
     ideasCount: number
     slideCols: string[]
@@ -189,7 +178,6 @@ type AvailableImage = StoredFile & {
   format: '9:16' | '3:4'
   category: 'affiliate' | 'ai-method'
 }
-type IdeaFormatPlan = '9:16' | '3:4' | 'mixed'
 
 export function GeneratePage() {
   const { colors } = useTheme()
@@ -241,382 +229,17 @@ export function GeneratePage() {
   const [availableSheets, setAvailableSheets] = useState<string[]>([])
   const [isLoadingSheets, setIsLoadingSheets] = useState(false)
   const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<string>('')
-
-  const canProceedToStep = (step: number) => {
-    switch (step) {
-      case 1:
-        return true
-      case 2:
-        // Allow if single sheet OR multi-sheet selection
-        return !!(step1Data?.spreadsheetId && (step1Data?.sheetName || (step1Data?.selectedSheets && step1Data.selectedSheets.length > 0)))
-      case 3:
-        return !!(step1Data?.ideas?.length && step2Data)
-      case 4:
-        return !!(generatedIdeas.length && !isGeneratingDrafts)
-      default:
-        return true
-    }
-  }
-
-  const nextStep = () => {
-    setCurrentStep((prev) => {
-      const target = Math.min(prev + 1, 4)
-      return canProceedToStep(target) ? target : prev
-    })
-  }
-
-  const prevStep = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1))
-  }
-
-  const resetStep1Summary = (overrides?: Partial<Step1Data>) => {
-    setStep1Data((prev) => {
-      const base: Step1Data = {
-        spreadsheetId: '',
-        spreadsheetName: '',
-        sheetName: '',
-        selectedSheets: [],
-        ideas: [],
-        slideColumns: [],
-        sheetsData: {},
-        summary: {
-          ideasCount: 0,
-          slideCols: []
-        }
-      }
-      return { ...base, ...(prev ?? {}), ...(overrides ?? {}) }
-    })
-  }
-
-  const fetchSpreadsheets = async () => {
-    if (status !== 'authenticated') {
-      setSpreadsheets([])
-      return
-    }
-
-    try {
-      setIsLoadingSheets(true)
-      const response = await fetch('/api/sheets/list')
-      if (!response.ok) {
-        throw new Error(`Failed to fetch spreadsheets: ${response.statusText}`)
-      }
-      const data = await response.json()
-      if (Array.isArray(data?.spreadsheets)) {
-        setSpreadsheets(data.spreadsheets)
-      } else {
-        setSpreadsheets([])
-      }
-    } catch (error) {
-      console.error('Failed to fetch spreadsheets:', error)
-      setSpreadsheets([])
-    } finally {
-      setIsLoadingSheets(false)
-    }
-  }
-
-  const handleSpreadsheetSelect = async (spreadsheetId: string) => {
-    setSelectedSpreadsheet(spreadsheetId)
-    setAvailableSheets([])
-
-    if (!spreadsheetId) {
-      resetStep1Summary({ spreadsheetId: '', spreadsheetName: '', sheetName: '' })
-      return
-    }
-
-    try {
-      setIsLoadingSheets(true)
-      const response = await fetch('/api/sheets/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spreadsheetId })
-      })
-      if (!response.ok) {
-        throw new Error(`Failed to read spreadsheet: ${response.statusText}`)
-      }
-      const data = await response.json()
-      const spreadsheetName = spreadsheets.find((sheet) => sheet.id === spreadsheetId)?.name || ''
-
-      if (Array.isArray(data?.sheetNames)) {
-        setAvailableSheets(data.sheetNames)
-      } else {
-        setAvailableSheets([])
-      }
-
-      resetStep1Summary({
-        spreadsheetId,
-        spreadsheetName,
-        sheetName: '',
-        ideas: [],
-        slideColumns: [],
-        summary: {
-          ideasCount: 0,
-          slideCols: []
-        }
-      })
-    } catch (error) {
-      console.error('Failed to fetch sheet names:', error)
-      setAvailableSheets([])
-    } finally {
-      setIsLoadingSheets(false)
-    }
-  }
-
-  const handleSheetSelect = async (sheetName: string) => {
-    if (!selectedSpreadsheet) {
-      return
-    }
-
-    if (!sheetName) {
-      resetStep1Summary({
-        spreadsheetId: selectedSpreadsheet,
-        spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
-        sheetName: ''
-      })
-      return
-    }
-
-    try {
-      setIsLoadingSheets(true)
-      const response = await fetch('/api/sheets/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spreadsheetId: selectedSpreadsheet,
-          sheetName
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to read sheet data: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      const ideas = Array.isArray(data?.ideas) ? data.ideas : []
-      const slideColumns = Array.isArray(data?.slideColumns) ? data.slideColumns : []
-
-      setStep1Data({
-        spreadsheetId: selectedSpreadsheet,
-        spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
-        sheetName,
-        selectedSheets: [sheetName], // single sheet
-        ideas,
-        slideColumns,
-        sheetsData: {
-          [sheetName]: {
-            sheetName,
-            ideas,
-            slideColumns
-          }
-        },
-        summary: {
-          ideasCount: typeof data?.totalIdeas === 'number' ? data.totalIdeas : ideas.length,
-          slideCols: slideColumns
-        }
-      })
-    } catch (error) {
-      console.error('Failed to read sheet data:', error)
-      // keep prior step1Data but reset counts
-      resetStep1Summary({
-        spreadsheetId: selectedSpreadsheet,
-        spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
-        sheetName
-      })
-    } finally {
-      setIsLoadingSheets(false)
-    }
-  }
-
-  // Multi-sheet selection handler
-  const handleMultiSheetSelect = async (sheetNames: string[]) => {
-    console.log('📋 MULTI-SHEET SELECTION DEBUG')
-    console.log('🎯 Selected sheets:', sheetNames)
-    
-    if (!selectedSpreadsheet) {
-      return
-    }
-
-    try {
-      setIsLoadingSheets(true)
-
-      // Fetch data for all selected sheets
-      const sheetsData: Record<string, SheetData> = {}
-      let totalIdeasCount = 0
-      const allSlideCols = new Set<string>()
-
-      for (const sheetName of sheetNames) {
-        console.log(`📥 Fetching sheet: ${sheetName}`)
-        const response = await fetch('/api/sheets/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            spreadsheetId: selectedSpreadsheet,
-            sheetName
-          })
-        })
-
-        if (!response.ok) {
-          console.warn(`Failed to read sheet ${sheetName}`)
-          continue
-        }
-
-        const data = await response.json()
-        const ideas = Array.isArray(data?.ideas) ? data.ideas : []
-        const slideColumns = Array.isArray(data?.slideColumns) ? data.slideColumns : []
-
-        console.log(`📊 Sheet "${sheetName}" data:`, {
-          ideasCount: ideas.length,
-          slideColumns: slideColumns,
-          sampleIdea: ideas[0] ? Object.keys(ideas[0]) : []
-        })
-
-        sheetsData[sheetName] = {
-          sheetName,
-          ideas,
-          slideColumns
-        }
-
-        totalIdeasCount += ideas.length
-        slideColumns.forEach((col: string) => allSlideCols.add(col))
-      }
-
-      const mergedIdeas = sheetNames.flatMap(name => 
-        (sheetsData[name]?.ideas || []).map((idea: any) => ({
-          ...idea,
-          _sheetName: name // Tag each idea with its source sheet
-        }))
-      )
-
-      console.log('🔄 MERGED DATA:', {
-        totalIdeas: mergedIdeas.length,
-        ideasPerSheet: sheetNames.map(name => ({
-          sheet: name,
-          count: sheetsData[name]?.ideas?.length || 0
-        })),
-        slideColumns: Array.from(allSlideCols),
-        sampleMergedIdeas: mergedIdeas.slice(0, 3).map(idea => ({
-          sheetName: idea._sheetName,
-          keys: Object.keys(idea)
-        }))
-      })
-
-      setStep1Data({
-        spreadsheetId: selectedSpreadsheet,
-        spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || '',
-        sheetName: sheetNames.length === 1 ? sheetNames[0] : '', // single sheet compat
-        selectedSheets: sheetNames,
-        // Merge all ideas from all sheets with sheet tracking
-        ideas: mergedIdeas,
-        slideColumns: Array.from(allSlideCols),
-        sheetsData,
-        summary: {
-          ideasCount: totalIdeasCount,
-          slideCols: Array.from(allSlideCols)
-        }
-      })
-    } catch (error) {
-      console.error('Failed to read multi-sheet data:', error)
-      resetStep1Summary({
-        spreadsheetId: selectedSpreadsheet,
-        spreadsheetName: spreadsheets.find((sheet) => sheet.id === selectedSpreadsheet)?.name || ''
-      })
-    } finally {
-      setIsLoadingSheets(false)
-    }
-  }
-
+  
   // Step 2 Preview states
   const [currentCaption, setCurrentCaption] = useState<string>('')
   const [currentImage, setCurrentImage] = useState<string>('')
   const [availableImages, setAvailableImages] = useState<AvailableImage[]>([])
   const [fontLoaded, setFontLoaded] = useState<boolean>(false)
-
-  const getRandomItem = <T,>(items: T[]): T | null => {
-    if (!items || items.length === 0) return null
-    const index = Math.floor(Math.random() * items.length)
-    return items[index] ?? null
-  }
-
-  const extractCaptionFromIdea = (idea: any): string | null => {
-    if (!idea) return null
-
-    if (typeof idea === 'string') {
-      const trimmed = idea.trim()
-      return trimmed.length > 0 ? trimmed : null
-    }
-
-    if (Array.isArray(idea)) {
-      for (const entry of idea) {
-        const result = extractCaptionFromIdea(entry)
-        if (result) return result
-      }
-      return null
-    }
-
-    if (typeof idea === 'object') {
-      const priorityKeys = [
-        'caption',
-        'Caption',
-        'idea',
-        'Idea',
-        'ideaText',
-        'text',
-        'Text',
-        'title',
-        'Title',
-        'description',
-        'Description',
-        'content',
-        'Content'
-      ]
-
-      for (const key of priorityKeys) {
-        const value = idea[key]
-        if (typeof value === 'string' && value.trim()) {
-          return value.trim()
-        }
-      }
-
-      for (const value of Object.values(idea)) {
-        const result = extractCaptionFromIdea(value)
-        if (result) return result
-      }
-    }
-
-    return null
-  }
-
-  const handleRandomCaption = useCallback(() => {
-    if (!step1Data?.ideas || step1Data.ideas.length === 0) {
-      return
-    }
-
-    const randomIdea = getRandomItem(step1Data.ideas)
-    const caption = extractCaptionFromIdea(randomIdea)
-
-    if (caption) {
-      setCurrentCaption(caption)
-    }
-  }, [step1Data])
-
-  const handleRandomImage = useCallback(() => {
-    if (!availableImages || availableImages.length === 0) {
-      return
-    }
-
-    const pool = availableImages.filter((image) => image.url !== currentImage)
-    const candidatePool = pool.length > 0 ? pool : availableImages
-    const randomImage = getRandomItem(candidatePool)
-
-    if (randomImage) {
-      setCurrentImage(randomImage.url)
-    }
-  }, [availableImages, currentImage])
-
+  
   // Step 3 Draft states
   const [generatedIdeas, setGeneratedIdeas] = useState<Array<{
     ideaId: number
     ideaText: string
-    sheetName?: string | null // Track which sheet this idea came from
     slides: Array<{
       id: string
       caption: string
@@ -780,30 +403,17 @@ export function GeneratePage() {
 
   const queueThumbnailForSlide = (slideId: string, renderConfig: SlideRenderConfig) => {
     clearThumbnails(job => job.id === slideId)
-    
-    // Convert to the format expected by renderSlideToCanvas
-    const basicSlide = {
-      exportSize: renderConfig.slide.exportSize,
-      backgroundColor: renderConfig.slide.backgroundColor,
-      imageRef: renderConfig.slide.imageRef,
-      imageTransform: renderConfig.slide.imageTransform,
-      textLayers: [] // Empty for now - caption is rendered separately
-    }
-    
     enqueueThumbnail({
       id: slideId,
       opts: {
-        slide: basicSlide,
+        slide: renderConfig.slide,
         caption: renderConfig.caption,
         scale: THUMBNAIL_SCALE
       },
       onComplete: (url) => {
         let previousUrl: string | null = null
-        
-        // Use functional update with proper state handling
         setGeneratedIdeas(prev => {
-          // Only update if the slide still exists
-          const updated = prev.map(idea => ({
+          const next = prev.map(idea => ({
             ...idea,
             slides: idea.slides.map(slide => {
               if (slide.id !== slideId) {
@@ -821,7 +431,7 @@ export function GeneratePage() {
             })
           }))
 
-          return updated
+          return next
         })
 
         if (previousUrl && previousUrl !== url) {
@@ -1027,7 +637,7 @@ export function GeneratePage() {
 
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0)
-    // From here on, ALWAYS use DESKTOP UNITS (1080??1440 or 1080??1920).
+    // From here on, ALWAYS use DESKTOP UNITS (1080×1440 or 1080×1920).
     // No per-draw *SCALE is needed anymore.
     return { ctx, base, scale, dpr }
   }
@@ -1118,99 +728,39 @@ export function GeneratePage() {
 
       console.log(`?? Creating ZIP with ${generatedIdeas.length} ideas...`)
 
-      // Group ideas by sheet for multi-sheet exports
-      const hasMultipleSheets = generatedIdeas.some(idea => idea.sheetName) && 
-                                 new Set(generatedIdeas.map(idea => idea.sheetName)).size > 1
+      for (const idea of generatedIdeas) {
+        const ideaFolder = zip.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
+        if (!ideaFolder) continue
 
-      if (hasMultipleSheets) {
-        // Multi-sheet export: organize by sheet folders
-        const sheetGroups = new Map<string, typeof generatedIdeas>()
-        
-        for (const idea of generatedIdeas) {
-          const sheetName = idea.sheetName || 'unsorted'
-          if (!sheetGroups.has(sheetName)) {
-            sheetGroups.set(sheetName, [])
+        for (let i = 0; i < idea.slides.length; i++) {
+          const slide = idea.slides[i]
+          if (!slide.renderConfig) {
+            console.warn(`Slide ${slide.id} has no render config, skipping export`)
+            continue
           }
-          sheetGroups.get(sheetName)!.push(idea)
-        }
 
-        for (const [sheetName, ideas] of sheetGroups) {
-          const sheetFolder = zip.folder(sheetName)
-          if (!sheetFolder) continue
+          const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
 
-          for (const idea of ideas) {
-            const ideaFolder = sheetFolder.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
-            if (!ideaFolder) continue
+          try {
+            const canvas = await renderSlideToCanvas({
+              slide: slide.renderConfig.slide,
+              caption: slide.renderConfig.caption,
+              scale: 1,
+              dpr: 1
+            })
 
-            for (let i = 0; i < idea.slides.length; i++) {
-              const slide = idea.slides[i]
-              if (!slide.renderConfig) {
-                console.warn(`Slide ${slide.id} has no render config, skipping export`)
-                continue
-              }
+            const blob = await new Promise<Blob | null>(resolve =>
+              canvas.toBlob(resolve, 'image/png', 1)
+            )
 
-              const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
-
-              try {
-                const canvas = await renderSlideToCanvas({
-                  slide: slide.renderConfig.slide,
-                  caption: slide.renderConfig.caption,
-                  scale: 1,
-                  dpr: 1
-                })
-
-                const blob = await new Promise<Blob | null>(resolve =>
-                  canvas.toBlob(resolve, 'image/png', 1)
-                )
-
-                if (!blob) {
-                  console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
-                  continue
-                }
-
-                ideaFolder.file(fileName, blob)
-              } catch (error) {
-                console.error(`Failed to export slide ${slide.id}:`, error)
-              }
-            }
-          }
-        }
-      } else {
-        // Single-sheet export: flat structure (backward compatible)
-        for (const idea of generatedIdeas) {
-          const ideaFolder = zip.folder(`idea_${idea.ideaId.toString().padStart(2, '0')}`)
-          if (!ideaFolder) continue
-
-          for (let i = 0; i < idea.slides.length; i++) {
-            const slide = idea.slides[i]
-            if (!slide.renderConfig) {
-              console.warn(`Slide ${slide.id} has no render config, skipping export`)
+            if (!blob) {
+              console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
               continue
             }
 
-            const fileName = `slide_${(i + 1).toString().padStart(2, '0')}.png`
-
-            try {
-              const canvas = await renderSlideToCanvas({
-                slide: slide.renderConfig.slide,
-                caption: slide.renderConfig.caption,
-                scale: 1,
-                dpr: 1
-              })
-
-              const blob = await new Promise<Blob | null>(resolve =>
-                canvas.toBlob(resolve, 'image/png', 1)
-              )
-
-              if (!blob) {
-                console.warn(`Slide ${slide.id} produced an empty blob, skipping`)
-                continue
-              }
-
-              ideaFolder.file(fileName, blob)
-            } catch (error) {
-              console.error(`Failed to export slide ${slide.id}:`, error)
-            }
+            ideaFolder.file(fileName, blob)
+          } catch (error) {
+            console.error(`Failed to export slide ${slide.id}:`, error)
           }
         }
       }
@@ -1242,152 +792,106 @@ export function GeneratePage() {
     }
   }
 
-  const assignImagesToIdeas = useCallback(async (ideas: typeof generatedIdeas, seed?: string) => {
-    console.log('🎨 ASSIGN IMAGES DEBUG')
-    console.log('📊 Input ideas:', {
-      count: ideas.length,
-      sheets: [...new Set(ideas.map(idea => idea.sheetName))],
-      totalSlides: ideas.reduce((sum, idea) => sum + idea.slides.length, 0),
-      seed: seed || 'default'
-    })
-
+  const randomizeAllImages = async () => {
     if (!step2Data) {
-      throw new Error('Step 2 settings are required for image assignment.')
+      alert('Step 2 settings are required before randomizing images.')
+      return
     }
 
-    // Filter images by explicit category first
-    const affiliateImages = availableImages.filter(
-      (img) => img.category === 'affiliate'
-    )
-    const aiMethodImages = availableImages.filter(
-      (img) => img.category === 'ai-method'
-    )
-    
-    console.log('🖼️ Image Categories:', {
-      total: availableImages.length,
-      affiliate: affiliateImages.length,
-      aiMethod: aiMethodImages.length,
-      uncategorized: availableImages.length - affiliateImages.length - aiMethodImages.length
-    })
-    
-    // If no explicit categories, fall back to name-based filtering
-    // (only if categories weren't set properly)
-    const affiliateByFallback = affiliateImages.length === 0 
-      ? availableImages.filter(img => !img.name?.includes('ai-method') && !img.category) 
-      : affiliateImages
-    const aiMethodByFallback = aiMethodImages.length === 0
-      ? availableImages.filter(img => img.name?.includes('ai-method'))
-      : aiMethodImages
+    if (generatedIdeas.length === 0 || availableImages.length === 0) {
+      alert('No images or drafts available to randomize.')
+      return
+    }
 
-    const shuffledAffiliate = [...affiliateByFallback]
-    const shuffledAiMethod = [...aiMethodByFallback]
+    try {
+      const affiliateImages = availableImages.filter(
+        img => img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
+      )
+      const aiMethodImages = availableImages.filter(
+        img => img.category === 'ai-method' || img.name?.includes('ai-method')
+      )
 
-    // Use seeded shuffle if seed is provided, otherwise use Math.random()
-    const shuffleFunction = (arr: any[]) => {
-      if (seed) {
-        // Simple seeded shuffle using the seed
-        let hash = 0
-        for (let i = 0; i < seed.length; i++) {
-          hash = ((hash << 5) - hash) + seed.charCodeAt(i)
-          hash = hash & hash // Convert to 32bit integer
-        }
-        
-        const rng = () => {
-          hash = ((hash << 5) - hash) + seed.length
-          hash = hash & hash
-          return Math.abs(hash) / 2147483648
-        }
-        
-        for (let i = arr.length - 1; i > 0; i--) {
-          const j = Math.floor(rng() * (i + 1))
-          ;[arr[i], arr[j]] = [arr[j], arr[i]]
-        }
-      } else {
-        for (let i = arr.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          ;[arr[i], arr[j]] = [arr[j], arr[i]]
-        }
+      const shuffledAffiliate = [...affiliateImages]
+      const shuffledAiMethod = [...aiMethodImages]
+
+      for (let i = shuffledAffiliate.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffledAffiliate[i], shuffledAffiliate[j]] = [shuffledAffiliate[j], shuffledAffiliate[i]]
       }
-    }
-    
-    shuffleFunction(shuffledAffiliate)
-    shuffleFunction(shuffledAiMethod)
 
-    let affiliateIndex = 0
-    let aiMethodIndex = 0
-    const thumbJobs: Array<{ slideId: string; renderConfig: SlideRenderConfig }> = []
-    const oldThumbUrls: string[] = []
-    const newUsedImageIds = new Set<string>()
-    const updatedIdeas: typeof generatedIdeas = []
-    const baseSettings = step2Data
+      for (let i = shuffledAiMethod.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffledAiMethod[i], shuffledAiMethod[j]] = [shuffledAiMethod[j], shuffledAiMethod[i]]
+      }
 
-    for (const idea of ideas) {
-      const totalSlides = idea.slides.length
-      const updatedSlides: typeof idea.slides = []
+      let affiliateIndex = 0
+      let aiMethodIndex = 0
+      const thumbJobs: Array<{ slideId: string; renderConfig: SlideRenderConfig }> = []
+      const oldThumbUrls: string[] = []
+      const newUsedImageIds = new Set<string>()
+      const updatedIdeas: typeof generatedIdeas = []
 
-      for (let idx = 0; idx < idea.slides.length; idx++) {
-        const slide = idea.slides[idx]
-        // Respect existing imageSource if set, otherwise determine from slide index
-        const desiredSource: 'affiliate' | 'ai-method' = slide.imageSource || 
-          (idx === totalSlides - 1 ? 'ai-method' : 'affiliate')
+      for (const idea of generatedIdeas) {
+        const totalSlides = idea.slides.length
+        const updatedSlides: typeof idea.slides = []
 
-        let chosenImage: AvailableImage | undefined
+        for (let idx = 0; idx < idea.slides.length; idx++) {
+          const slide = idea.slides[idx]
+          const isLastSlide = idx === totalSlides - 1
+          const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
 
-        if (desiredSource === 'ai-method' && shuffledAiMethod.length > 0) {
-          chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
-          console.log(`🎯 Idea ${idea.ideaId}, Slide ${idx + 1} (LAST): AI Method - "${chosenImage.name}"`)
-          aiMethodIndex++
-        } else if (desiredSource === 'affiliate' && shuffledAffiliate.length > 0) {
-          chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
-          console.log(`📸 Idea ${idea.ideaId}, Slide ${idx + 1}: Affiliate - "${chosenImage.name}"`)
-          affiliateIndex++
-        } else if (shuffledAffiliate.length > 0) {
-          chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
-          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Affiliate - "${chosenImage.name}"`)
-          affiliateIndex++
-        } else if (shuffledAiMethod.length > 0) {
-          chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
-          console.log(`⚠️ Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: AI Method - "${chosenImage.name}"`)
-          aiMethodIndex++
-        } else if (availableImages.length > 0) {
-          chosenImage = availableImages[(idea.ideaId + idx) % availableImages.length]
-          console.log(`⚠️ Final Fallback: Idea ${idea.ideaId}, Slide ${idx + 1}: Random - "${chosenImage.name}"`)
-        }
+          let chosenImage: (StoredFile & { url: string; fileHandle?: FileSystemFileHandle }) | undefined
 
-        let nextImageUrl = slide.image
-        if (chosenImage) {
-          newUsedImageIds.add(chosenImage.id)
-          if (chosenImage.fileHandle) {
-            try {
-              const file = await chosenImage.fileHandle.getFile()
-              nextImageUrl = URL.createObjectURL(file)
-            } catch (error) {
-              console.warn('Failed to create blob URL from file handle, using existing URL', error)
+          if (desiredSource === 'ai-method' && shuffledAiMethod.length > 0) {
+            chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
+            aiMethodIndex++
+          } else if (desiredSource === 'affiliate' && shuffledAffiliate.length > 0) {
+            chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
+            affiliateIndex++
+          } else if (shuffledAffiliate.length > 0) {
+            chosenImage = shuffledAffiliate[affiliateIndex % shuffledAffiliate.length]
+            affiliateIndex++
+          } else if (shuffledAiMethod.length > 0) {
+            chosenImage = shuffledAiMethod[aiMethodIndex % shuffledAiMethod.length]
+            aiMethodIndex++
+          } else if (availableImages.length > 0) {
+            chosenImage = availableImages[Math.floor(Math.random() * availableImages.length)]
+          }
+
+          let nextImageUrl = slide.image
+          if (chosenImage) {
+            newUsedImageIds.add(chosenImage.id)
+            if (chosenImage.fileHandle) {
+              try {
+                const file = await chosenImage.fileHandle.getFile()
+                nextImageUrl = URL.createObjectURL(file)
+              } catch (error) {
+                console.warn('Failed to create blob URL from file handle, using existing URL', error)
+                nextImageUrl = chosenImage.url
+              }
+            } else {
               nextImageUrl = chosenImage.url
             }
-          } else {
-            nextImageUrl = chosenImage.url
           }
-        }
 
-        const format = (slide.format || baseSettings.safeZoneFormat || '9:16') as '9:16' | '3:4'
-        const renderConfig = buildRenderConfig(
-          nextImageUrl || null,
-          slide.caption,
-          format,
-          baseSettings,
-          slide.styleOverride,
-          {
-            rotate180: slide.rotateBg180,
-            flipHorizontal: slide.flipH
+          const format = (slide.format || step2Data.safeZoneFormat || '9:16') as '9:16' | '3:4'
+          const renderConfig = buildRenderConfig(
+            nextImageUrl || null,
+            slide.caption,
+            format,
+            step2Data,
+            slide.styleOverride,
+            {
+              rotate180: slide.rotateBg180,
+              flipHorizontal: slide.flipH
+            }
+          )
+
+          if (slide.thumbnail && slide.thumbnail.startsWith('blob:')) {
+            oldThumbUrls.push(slide.thumbnail)
           }
-        )
 
-        if (slide.thumbnail && slide.thumbnail.startsWith('blob:')) {
-          oldThumbUrls.push(slide.thumbnail)
-        }
-
-        thumbJobs.push({ slideId: slide.id, renderConfig })
+          thumbJobs.push({ slideId: slide.id, renderConfig })
 
           updatedSlides.push({
             ...slide,
@@ -1399,35 +903,11 @@ export function GeneratePage() {
           })
         }
 
-      updatedIdeas.push({
-        ...idea,
-        slides: updatedSlides
-      })
-    }
-
-    return { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds }
-  }, [availableImages, step2Data])
-
-  const randomizeAllImages = async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false
-
-    if (!step2Data) {
-      if (!silent) alert('Step 2 settings are required before randomizing images.')
-      return
-    }
-
-    if (generatedIdeas.length === 0) {
-      if (!silent) alert('No images or drafts available to randomize.')
-      return
-    }
-
-    if (availableImages.length === 0) {
-      if (!silent) alert('No images available to randomize.')
-      return
-    }
-
-    try {
-      const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(generatedIdeas)
+        updatedIdeas.push({
+          ...idea,
+          slides: updatedSlides
+        })
+      }
 
       setGeneratedIdeas(updatedIdeas)
       setUsedImages(newUsedImageIds)
@@ -1441,14 +921,10 @@ export function GeneratePage() {
         }
       })
 
-      if (!silent) {
-        alert('All images randomized successfully!')
-      }
+      alert('All images randomized successfully!')
     } catch (error) {
       console.error('Failed to randomize images:', error)
-      if (!silent) {
-        alert('Failed to randomize images. Please try again.')
-      }
+      alert('Failed to randomize images. Please try again.')
     }
   }
 
@@ -1481,31 +957,23 @@ export function GeneratePage() {
 
       const slideImageSource =
         slide.imageSource || (slideIndex === idea.slides.length - 1 ? 'ai-method' : 'affiliate')
-      
-      console.log(`🔄 Randomizing Idea ${idea.ideaId}, Slide ${slideIndex + 1} (source: ${slideImageSource})`)
 
-      // Filter images by explicit category first (same logic as assignImagesToIdeas)
-      const affiliateImages = availableImages.filter(img => img.category === 'affiliate')
-      const aiMethodImages = availableImages.filter(img => img.category === 'ai-method')
-      
-      // If no explicit categories, fall back to name-based filtering
-      const affiliateByFallback = affiliateImages.length === 0 
-        ? availableImages.filter(img => !img.name?.includes('ai-method') && !img.category) 
-        : affiliateImages
-      const aiMethodByFallback = aiMethodImages.length === 0
-        ? availableImages.filter(img => img.name?.includes('ai-method'))
-        : aiMethodImages
-      
-      let availableForSelection = slideImageSource === 'ai-method' ? aiMethodByFallback : affiliateByFallback
-      
-      console.log(`📊 Available pools: Affiliate=${affiliateByFallback.length}, AI Method=${aiMethodByFallback.length}, Selected=${availableForSelection.length}`)
+      let availableForSelection = availableImages.filter(img => {
+        const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
+        const isAiMethod = img.category === 'ai-method' || img.name?.includes('ai-method')
+
+        return slideImageSource === 'ai-method' ? isAiMethod : isAffiliate
+      })
 
       availableForSelection = availableForSelection.filter(img => !usedImages.has(img.id))
 
       if (availableForSelection.length === 0) {
-        console.log('⚠️ No unused images, resetting usedImages and using full pool')
         setUsedImages(new Set())
-        availableForSelection = slideImageSource === 'ai-method' ? aiMethodByFallback : affiliateByFallback
+        availableForSelection = availableImages.filter(img => {
+          const isAffiliate = img.category === 'affiliate' || (img.name?.includes('affiliate') || !img.name?.includes('ai-method'))
+          const isAiMethod = img.category === 'ai-method' || img.name?.includes('ai-method')
+          return slideImageSource === 'ai-method' ? isAiMethod : isAffiliate
+        })
       }
 
       availableForSelection = availableForSelection.filter(img => img.url !== slide.image)
@@ -1586,7 +1054,7 @@ export function GeneratePage() {
       handleRandomCaption()
       handleRandomImage()
     }
-  }, [currentStep, step1Data, currentCaption, handleRandomCaption, handleRandomImage])
+  }, [currentStep, step1Data])
 
   // Close project handlers
   const handleSaveAndExit = () => {
@@ -1632,404 +1100,6 @@ export function GeneratePage() {
     setEditingSlide({ ideaIndex, slideIndex })
     setShowSlideEditor(true)
   }
-
-  const toggleIdeaExpansion = (ideaId: number) => {
-    setGeneratedIdeas((prev) =>
-      prev.map((idea) =>
-        idea.ideaId === ideaId ? { ...idea, isExpanded: !idea.isExpanded } : idea
-      )
-    )
-  }
-
-  const getIdeaFormatPlan = (index: number, total: number): IdeaFormatPlan => {
-    const pref = generationPreferences.format
-    if (pref === 'combined' && total > 0) {
-      const bucketSize = Math.max(1, Math.floor(total / 3))
-      if (index < bucketSize) return '9:16'
-      if (index < bucketSize * 2) return '3:4'
-      return 'mixed'
-    }
-    return pref === '3:4' ? '3:4' : '9:16'
-  }
-
-  const getIdeaTitle = (
-    idea: any,
-    entries: Array<{ column: string; text: string }>,
-    fallback: string
-  ): string => {
-    const priorityKeys = ['Idea', 'Title', 'Hook', 'Topic', 'Headline', 'Subject']
-    for (const key of priorityKeys) {
-      const value = idea?.[key]
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim()
-      }
-    }
-    return entries[0]?.text || fallback
-  }
-
-  const startGeneration = useCallback(async () => {
-    console.log('🚀 START GENERATION DEBUG')
-    console.log('📊 Step1Data:', {
-      hasIdeas: !!step1Data?.ideas,
-      ideasCount: step1Data?.ideas?.length || 0,
-      selectedSheets: step1Data?.selectedSheets || [],
-      sheetsData: step1Data?.sheetsData ? Object.keys(step1Data.sheetsData) : [],
-      slideColumns: step1Data?.slideColumns || [],
-      summary: step1Data?.summary || {}
-    })
-
-    if (!step1Data?.ideas || step1Data.ideas.length === 0) {
-      alert('Please load ideas in Step 1 before generating drafts.')
-      return
-    }
-
-    if (!step2Data) {
-      alert('Step 2 settings are required before generating drafts.')
-      setCurrentStep(2)
-      return
-    }
-
-    const slideColumns =
-      (step1Data.slideColumns && step1Data.slideColumns.length > 0
-        ? step1Data.slideColumns
-        : step1Data.summary?.slideCols) ?? []
-
-    if (slideColumns.length === 0) {
-      alert('No slide columns were detected in your spreadsheet. Please verify the sheet format.')
-      return
-    }
-
-    console.log('📋 Slide Columns:', slideColumns)
-
-    setIsGeneratingDrafts(true)
-
-    // Calculate total ideas for multi-sheet mode
-    let totalIdeas = 0
-    if (step1Data.selectedSheets && step1Data.selectedSheets.length > 1 && step1Data.sheetsData) {
-      // Multi-sheet mode: sum ideas from all sheets
-      for (const sheetData of Object.values(step1Data.sheetsData)) {
-        totalIdeas += (sheetData.ideas || []).length
-      }
-    } else {
-      // Single-sheet mode: use merged ideas
-      totalIdeas = step1Data.ideas.length
-    }
-    
-    const progressState = {
-      completed: 0,
-      total: totalIdeas,
-      currentSlide: 0,
-      eta: 0,
-      formats: [] as Array<{ slide: number; format: '9:16' | '3:4' }>
-    }
-    setGenerationProgress(progressState)
-
-    const startTime = performance.now()
-    const baseIdeas: typeof generatedIdeas = []
-    let globalSlideCounter = 0
-    let completedIdeas = 0
-    
-    // Track ideaId per sheet for independent numbering
-    const sheetCounters = new Map<string, number>()
-
-    console.log('🔄 Processing ideas...')
-
-    try {
-      // Check if we have multi-sheet data
-      const isMultiSheet = step1Data.selectedSheets && step1Data.selectedSheets.length > 1
-      
-      if (isMultiSheet && step1Data.sheetsData) {
-        // Multi-sheet mode: Process each sheet independently with per-sheet image assignment
-        const runId = new Date().toISOString()
-        console.log('🌐 Multi-sheet mode: Processing sheets independently')
-        console.log('🚀 RUN ID:', runId)
-        
-        for (const [sheetName, sheetData] of Object.entries(step1Data.sheetsData)) {
-          const slideColumns = sheetData.slideColumns || []
-          
-          if (slideColumns.length === 0) {
-            console.warn(`No slide columns found for sheet ${sheetName}, skipping`)
-            continue
-          }
-
-          const ideas = sheetData.ideas || []
-          console.log(`📊 Processing sheet "${sheetName}": ${ideas.length} ideas`)
-          
-          // PER-SHEET STATE: All variables scoped to this sheet
-          const sheetCompletedIdeas: typeof generatedIdeas = []
-          
-          // Process this sheet's ideas independently
-          ideas.forEach((rawIdea, idx) => {
-            console.log(`\n📝 Processing ${sheetName} Idea ${idx + 1}:`, {
-              sheetName: rawIdea._sheetName || sheetName,
-              ideaKeys: Object.keys(rawIdea),
-              sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
-            })
-            
-            const slideEntries = slideColumns
-              .map((column) => {
-                const value = rawIdea?.[column]
-                const text = value === null || value === undefined ? '' : String(value).trim()
-                return { column, text }
-              })
-              .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
-
-            // Use per-sheet counter for ideaId (1-N per sheet)
-            const ideaId = idx + 1
-            
-            const ideaPlan = getIdeaFormatPlan(idx, ideas.length) // Use sheet's idea count, not total
-            const slides: typeof generatedIdeas[0]['slides'] = []
-
-            slideEntries.forEach((entry, slideIdx) => {
-              const isLastSlide = slideIdx === slideEntries.length - 1
-              const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
-              const slideFormat =
-                ideaPlan === 'mixed'
-                  ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
-                  : (ideaPlan as '9:16' | '3:4')
-
-              const slideId = `${sheetName}-idea-${ideaId}-slide-${slideIdx + 1}`
-              
-              console.log(`  📄 ${sheetName} Slide ${slideIdx + 1}/${slideEntries.length}:`, {
-                slideId,
-                isLastSlide,
-                imageSource: desiredSource,
-                format: slideFormat,
-                caption: entry.text.substring(0, 50) + '...'
-              })
-              
-              slides.push({
-                id: slideId,
-                caption: entry.text,
-                image: '',
-                renderConfig: buildRenderConfig(
-                  null,
-                  entry.text,
-                  slideFormat,
-                  step2Data
-                ),
-                thumbnail: null,
-                createdAt: new Date(),
-                slideNumber: slideIdx + 1,
-                imageSource: desiredSource,
-                format: slideFormat,
-                lastModified: Date.now(),
-                rotateBg180: false,
-                flipH: false,
-                styleOverride: undefined
-              })
-
-              globalSlideCounter += 1
-              progressState.formats.push({
-                slide: globalSlideCounter,
-                format: slideFormat === '3:4' ? '3:4' : '9:16'
-              })
-            })
-
-            const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `${sheetName} Idea ${ideaId}`)
-
-            if (slides.length > 0) {
-              sheetCompletedIdeas.push({
-                ideaId,
-                ideaText: ideaTitle,
-                slides,
-                isExpanded: false,
-                sheetName: sheetName // Use the current sheet name
-              })
-            }
-
-            completedIdeas++
-            progressState.completed = completedIdeas
-            progressState.currentSlide = slides.length
-            const elapsedSeconds = (performance.now() - startTime) / 1000
-            const averagePerIdea = elapsedSeconds / completedIdeas
-            progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - completedIdeas)))
-            setGenerationProgress({ ...progressState })
-          })
-          
-          // Add this sheet's ideas to the base ideas
-          baseIdeas.push(...sheetCompletedIdeas)
-          
-          console.log(`✅ Completed ${sheetName}: ${sheetCompletedIdeas.length} ideas with ${sheetCompletedIdeas.reduce((sum, idea) => sum + idea.slides.length, 0)} slides`)
-        }
-        
-        // Now assign images to each sheet's ideas with per-sheet seeding
-        console.log('🎨 Assigning images per sheet with unique seeds')
-        const updatedIdeasArray: typeof generatedIdeas = []
-        let allThumbJobs: Array<{ slideId: string; renderConfig: SlideRenderConfig }> = []
-        let allOldThumbUrls: string[] = []
-        let allNewUsedImageIds = new Set<string>()
-        
-        for (const [sheetName, sheetData] of Object.entries(step1Data.sheetsData)) {
-          const sheetIdeas = baseIdeas.filter(idea => idea.sheetName === sheetName)
-          if (sheetIdeas.length === 0) continue
-          
-          const sheetSeed = `${runId}:${sheetName}`
-          console.log(`🎨 Assigning images for ${sheetName} with seed: ${sheetSeed}`)
-          
-          const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(sheetIdeas, sheetSeed)
-          
-          updatedIdeasArray.push(...updatedIdeas)
-          allThumbJobs.push(...thumbJobs)
-          allOldThumbUrls.push(...oldThumbUrls)
-          newUsedImageIds.forEach(id => allNewUsedImageIds.add(id))
-        }
-        
-        setGeneratedIdeas(updatedIdeasArray)
-        setUsedImages(allNewUsedImageIds)
-        allThumbJobs.forEach((job) => queueThumbnailForSlide(job.slideId, job.renderConfig))
-        allOldThumbUrls.forEach((url) => {
-          try {
-            URL.revokeObjectURL(url)
-          } catch (error) {
-            console.warn('Failed to revoke thumbnail URL', error)
-          }
-        })
-        
-        console.log('✅ All sheets processed with unique image assignments')
-        
-        // Continue to image assignment and progress to Step 3
-      } else {
-        // Single-sheet mode: Process merged ideas (backward compatibility)
-        console.log('📄 Single-sheet mode: Processing merged ideas')
-        
-        step1Data.ideas.forEach((rawIdea, idx) => {
-          console.log(`\n📝 Processing Idea ${idx + 1}:`, {
-            sheetName: rawIdea._sheetName,
-            ideaKeys: Object.keys(rawIdea),
-            sampleData: Object.fromEntries(Object.entries(rawIdea).slice(0, 3))
-          })
-          
-          const slideEntries = slideColumns
-            .map((column) => {
-              const value = rawIdea?.[column]
-              const text = value === null || value === undefined ? '' : String(value).trim()
-              return { column, text }
-            })
-            .filter((entry) => entry.text && entry.text.toLowerCase() !== 'nan')
-
-          const sheetName = rawIdea._sheetName || 'default'
-          
-          // Get or initialize counter for this sheet
-          if (!sheetCounters.has(sheetName)) {
-            sheetCounters.set(sheetName, 0)
-          }
-          const currentSheetCount = sheetCounters.get(sheetName)! + 1
-          sheetCounters.set(sheetName, currentSheetCount)
-          
-          // Use per-sheet counter for ideaId
-          const ideaId = currentSheetCount
-          
-          const ideaPlan = getIdeaFormatPlan(idx, totalIdeas)
-          const ideaIndex = baseIdeas.length
-          const slides: typeof generatedIdeas[0]['slides'] = []
-
-          slideEntries.forEach((entry, slideIdx) => {
-            const isLastSlide = slideIdx === slideEntries.length - 1
-            const desiredSource: 'affiliate' | 'ai-method' = isLastSlide ? 'ai-method' : 'affiliate'
-            const slideFormat =
-              ideaPlan === 'mixed'
-                ? (slideIdx % 2 === 0 ? '9:16' : '3:4')
-                : (ideaPlan as '9:16' | '3:4')
-
-            const slideId = `idea-${ideaId}-slide-${slideIdx + 1}`
-            
-            console.log(`  📄 Slide ${slideIdx + 1}/${slideEntries.length}:`, {
-              slideId,
-              isLastSlide,
-              imageSource: desiredSource,
-              format: slideFormat,
-              caption: entry.text.substring(0, 50) + '...'
-            })
-            
-            slides.push({
-              id: slideId,
-              caption: entry.text,
-              image: '',
-              renderConfig: buildRenderConfig(
-                null,
-                entry.text,
-                slideFormat,
-                step2Data
-              ),
-              thumbnail: null,
-              createdAt: new Date(),
-              slideNumber: slideIdx + 1,
-              imageSource: desiredSource,
-              format: slideFormat,
-              lastModified: Date.now(),
-              rotateBg180: false,
-              flipH: false,
-              styleOverride: undefined
-            })
-
-            globalSlideCounter += 1
-            progressState.formats.push({
-              slide: globalSlideCounter,
-              format: slideFormat === '3:4' ? '3:4' : '9:16'
-            })
-          })
-
-          const ideaTitle = getIdeaTitle(rawIdea, slideEntries, `Idea ${ideaId}`)
-
-          if (slides.length > 0) {
-            baseIdeas.push({
-              ideaId,
-              ideaText: ideaTitle,
-              slides,
-              isExpanded: false,
-              sheetName: rawIdea._sheetName || null // Track which sheet this idea came from
-            })
-          }
-
-          progressState.completed = idx + 1
-          progressState.currentSlide = slides.length
-          const elapsedSeconds = (performance.now() - startTime) / 1000
-          const averagePerIdea = elapsedSeconds / (idx + 1)
-          progressState.eta = Math.max(0, Math.round(averagePerIdea * (totalIdeas - (idx + 1))))
-          setGenerationProgress({ ...progressState })
-        })
-      }
-
-      if (baseIdeas.length === 0) {
-        alert('No slides were generated. Please verify your spreadsheet content.')
-        setGenerationProgress(null)
-        setIsGeneratingDrafts(false)
-        return
-      }
-
-      // Only assign images if not already done (multi-sheet mode already assigns per sheet)
-      // isMultiSheet is already defined above at line 1739
-      if (!isMultiSheet) {
-        // Single-sheet mode: assign images now
-        const { updatedIdeas, thumbJobs, oldThumbUrls, newUsedImageIds } = await assignImagesToIdeas(baseIdeas)
-
-        setGeneratedIdeas(updatedIdeas)
-        setUsedImages(newUsedImageIds)
-        thumbJobs.forEach((job) => queueThumbnailForSlide(job.slideId, job.renderConfig))
-        oldThumbUrls.forEach((url) => {
-          try {
-            URL.revokeObjectURL(url)
-          } catch (error) {
-            console.warn('Failed to revoke thumbnail URL', error)
-          }
-        })
-
-        setSelectedDraft(updatedIdeas[0]?.slides[0]?.id ?? null)
-      } else {
-        // Multi-sheet mode: images already assigned per sheet, just select first draft
-        setSelectedDraft(generatedIdeas[0]?.slides[0]?.id ?? null)
-      }
-
-      setGenerationProgress(null)
-      setCurrentStep(4)
-    } catch (error) {
-      console.error('Failed to generate drafts:', error)
-      alert('Draft generation failed. Please try again.')
-    } finally {
-      setIsGeneratingDrafts(false)
-    }
-  }, [assignImagesToIdeas, generationPreferences.format, step1Data, step2Data])
 
 
 
@@ -2121,7 +1191,7 @@ export function GeneratePage() {
 
   const renderStep1 = () => {
     return (
-    <div className="space-y-6">
+      <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold mb-2" style={{ color: colors.text }}>
             Step 1: Select Ideas
@@ -2701,7 +1771,7 @@ export function GeneratePage() {
             globalSettings={step2Data}
             onRandomizeImage={() => {
               if (editingSlide) {
-                console.log(`???? SlideEditor randomize button clicked! Idea: ${editingSlide.ideaIndex}, Slide: ${editingSlide.slideIndex}`)
+                console.log(`🔥 SlideEditor randomize button clicked! Idea: ${editingSlide.ideaIndex}, Slide: ${editingSlide.slideIndex}`)
                 randomizeSingleSlideImage(editingSlide.ideaIndex, editingSlide.slideIndex)
               }
             }}
@@ -2760,7 +1830,7 @@ export function GeneratePage() {
                   />
                 )}
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -2776,7 +1846,6 @@ export function GeneratePage() {
             handleSpreadsheetSelect={handleSpreadsheetSelect}
             availableSheets={availableSheets}
             handleSheetSelect={handleSheetSelect}
-            handleMultiSheetSelect={handleMultiSheetSelect}
             signIn={signIn}
           />
         )}
@@ -2856,4 +1925,3 @@ export function GeneratePage() {
     </div>
   )
 }
-
